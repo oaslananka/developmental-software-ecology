@@ -40,6 +40,24 @@ class CognitionState(BaseModel):
     last_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
+class EpisodicMemory(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    memory_id: str = Field(min_length=1)
+    created_tick: int = Field(ge=0)
+    source_event_id: str = Field(min_length=1)
+    content: str = Field(min_length=1, max_length=240)
+    salience: float = Field(ge=0.0, le=1.0)
+    decision: str | None = None
+    focus: str | None = None
+
+
+class MemoryState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    episodes: list[EpisodicMemory] = Field(default_factory=list)
+
+
 class AgentState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -51,5 +69,6 @@ class AgentState(BaseModel):
     traits: TraitState
     resources: ResourceState
     cognition: CognitionState = Field(default_factory=CognitionState)
+    memory: MemoryState = Field(default_factory=MemoryState)
     last_active_tick: int = Field(default=0, ge=0)
     state_version: int = Field(default=0, ge=0)
