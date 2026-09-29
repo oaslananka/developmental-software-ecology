@@ -170,6 +170,11 @@ def validate_condition_manifest(manifest: "ExperimentManifest") -> None:
             "condition-contract manifests require study.compute_match_group"
         )
 
+    if manifest.evaluation_profile != "v0_1-hidden-functional-suite":
+        raise ValueError(
+            "condition-contract manifests require the V0.1 evaluation profile"
+        )
+
     if profile.ril_control:
         if study.ril_topology == "not_applicable":
             raise ValueError("RIL condition requires an explicit isolated topology")
