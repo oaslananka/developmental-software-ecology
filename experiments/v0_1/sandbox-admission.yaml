@@ -1,0 +1,70 @@
+schema_version: "0.1"
+
+experiment:
+  id: "m9-sandbox-admission-seed-42"
+  name: "M9 Sandbox Admission Contract"
+  condition: "ES"
+  seed: 42
+
+world:
+  agent_count: 1
+  max_world_ticks: 1000
+  tick_duration_sim_seconds: 60
+  snapshot_interval_ticks: 100
+
+agents:
+  initial_traits:
+    exploration_bias: 0.5
+    persistence: 0.5
+    social_bias: 0.5
+    risk_bias: 0.5
+  lifecycle:
+    active_ticks_per_cycle: 120
+    sleep_ticks_per_cycle: 60
+  cognition:
+    enabled: false
+    model_calls_per_cycle: 0
+    interval_ticks: 200
+  goals:
+    enabled: false
+    lifecycle_enabled: false
+    max_active_goals: 1
+  actions:
+    enabled: false
+    proposals_per_cycle: 0
+  tool_broker:
+    enabled: false
+    executions_per_cycle: 0
+    executor: "deterministic-fake"
+  memory:
+    enabled: false
+    capacity: 32
+    retrieval_limit: 4
+  sleep_memory:
+    enabled: false
+    strengthen_top_k: 0
+    salience_boost: 0.0
+    forget_below_salience: 0.0
+    forget_older_than_ticks: 0
+    max_forget_per_sleep: 0
+
+runtime:
+  llm_enabled: false
+  forge_enabled: false
+  sandbox_enabled: true
+  web_enabled: false
+  sandbox_policy:
+    backend: "external-hardened"
+    network_enabled: false
+    host_mounts_enabled: false
+    secrets_enabled: false
+    shell_enabled: false
+    cpu_seconds: 2
+    memory_mb: 256
+    pids_max: 32
+    disk_mb: 64
+    output_bytes: 65536
+    wall_timeout_seconds: 5
+  model_provider:
+    kind: "fake"
+    model: "fake-cognition-v0.1"
