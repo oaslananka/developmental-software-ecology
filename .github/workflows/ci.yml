@@ -50,7 +50,8 @@ jobs:
           python-version: "3.12"
           cache: "pip"
       - name: Install probe test dependency
-        run: python -m pip install --only-binary=:all: pytest==8.4.2
+        run: >-
+          python -m pip install --only-binary=:all: pytest==8.4.2
       - name: Install gVisor runsc
         run: |
           sudo apt-get update
