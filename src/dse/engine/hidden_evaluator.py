@@ -66,12 +66,7 @@ def build_culture_evaluation_snapshot(
             "evaluation snapshot byte limit exceeded"
         )
 
-    bindings = [
-        EvaluationArtifactBinding.model_validate(
-            artifact.model_dump(mode="json", exclude={"content"})
-        )
-        for artifact in artifacts
-    ]
+    bindings = _artifact_bindings(artifacts)
     culture_snapshot_hash = state_hash(
         [binding.model_dump(mode="json") for binding in bindings]
     )
@@ -95,12 +90,7 @@ def build_hidden_evaluation_plan(
     if not config.enabled or config.suite_id is None or config.suite_hash is None:
         raise ValueError("hidden evaluation is not fully configured")
 
-    bindings = [
-        EvaluationArtifactBinding.model_validate(
-            artifact.model_dump(mode="json", exclude={"content"})
-        )
-        for artifact in snapshot.artifacts
-    ]
+    bindings = _artifact_bindings(snapshot.artifacts)
     identity_hash = state_hash(
         {
             "experiment_id": snapshot.experiment_id,
@@ -249,19 +239,7 @@ async def evaluate_hidden_functional_culture(
         )
 
     report_material = {
-        "evaluation_id": plan.evaluation_id,
-        "experiment_id": plan.experiment_id,
-        "condition": plan.condition,
-        "world_tick": plan.world_tick,
-        "world_sequence": plan.world_sequence,
-        "world_snapshot_hash": plan.world_snapshot_hash,
-        "culture_snapshot_hash": plan.culture_snapshot_hash,
-        "suite_id": plan.suite_id,
-        "suite_hash": plan.suite_hash,
-        "artifact_bindings": [
-            binding.model_dump(mode="json")
-            for binding in plan.artifact_bindings
-        ],
+        **plan.model_dump(mode="json"),
         "passed_cases": result.passed_cases,
         "failed_cases": result.failed_cases,
         "total_cases": result.total_cases,
@@ -286,37 +264,39 @@ async def evaluate_hidden_functional_culture(
     )
 
 
+def _artifact_bindings(
+    artifacts: list[EvaluationArtifactInput],
+) -> list[EvaluationArtifactBinding]:
+    return [
+        EvaluationArtifactBinding.model_validate(
+            artifact.model_dump(mode="json", exclude={"content"})
+        )
+        for artifact in artifacts
+    ]
+
+
 def _result_binding_errors(request, result, runner) -> list[str]:
-    expected = {
-        "request_id": request.request_id,
-        "evaluation_id": request.plan.evaluation_id,
-        "plan_hash": request.plan_hash,
-        "culture_snapshot_hash": request.plan.culture_snapshot_hash,
-        "suite_hash": request.plan.suite_hash,
-        "policy_hash": request.policy_hash,
-        "attestation_id": request.attestation_id,
-        "backend": request.backend,
-        "backend_version": request.backend_version,
-        "runner_kind": runner.runner_kind,
-        "runner_version": runner.runner_version,
-    }
-    actual = {
-        "request_id": result.request_id,
-        "evaluation_id": result.evaluation_id,
-        "plan_hash": result.plan_hash,
-        "culture_snapshot_hash": result.culture_snapshot_hash,
-        "suite_hash": result.suite_hash,
-        "policy_hash": result.policy_hash,
-        "attestation_id": result.attestation_id,
-        "backend": result.backend,
-        "backend_version": result.backend_version,
-        "runner_kind": result.runner_kind,
-        "runner_version": result.runner_version,
-    }
+    checks = (
+        ("request_id", request.request_id, result.request_id),
+        ("evaluation_id", request.plan.evaluation_id, result.evaluation_id),
+        ("plan_hash", request.plan_hash, result.plan_hash),
+        (
+            "culture_snapshot_hash",
+            request.plan.culture_snapshot_hash,
+            result.culture_snapshot_hash,
+        ),
+        ("suite_hash", request.plan.suite_hash, result.suite_hash),
+        ("policy_hash", request.policy_hash, result.policy_hash),
+        ("attestation_id", request.attestation_id, result.attestation_id),
+        ("backend", request.backend, result.backend),
+        ("backend_version", request.backend_version, result.backend_version),
+        ("runner_kind", runner.runner_kind, result.runner_kind),
+        ("runner_version", runner.runner_version, result.runner_version),
+    )
     return [
         field
-        for field, expected_value in expected.items()
-        if actual[field] != expected_value
+        for field, expected, actual in checks
+        if actual != expected
     ]
 
 
