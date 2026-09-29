@@ -9,6 +9,8 @@ from dse.contracts.evaluation import (
 class HiddenEvaluatorRunner(Protocol):
     runner_kind: Literal["test-double", "external-hardened"]
     runner_version: str
+    worker_build_sha256: str
+    runtime_build_sha256: str
 
     async def evaluate(
         self,
