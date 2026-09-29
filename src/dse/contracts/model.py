@@ -16,19 +16,58 @@ class GoalProposal(StrictModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
+class GoalProgressUpdate(StrictModel):
+    progress: float = Field(gt=0.0, le=1.0)
+    progress_summary: str = Field(min_length=1, max_length=240)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class GoalClosure(StrictModel):
+    summary: str = Field(min_length=1, max_length=320)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
 class CognitionDecision(StrictModel):
-    decision: Literal["idle", "observe", "propose_goal"]
+    decision: Literal[
+        "idle",
+        "observe",
+        "propose_goal",
+        "update_goal",
+        "complete_goal",
+        "abandon_goal",
+    ]
     reason_summary: str = Field(min_length=1, max_length=240)
     confidence: float = Field(ge=0.0, le=1.0)
     focus: str | None = Field(default=None, max_length=160)
     goal: GoalProposal | None = None
+    goal_update: GoalProgressUpdate | None = None
+    goal_closure: GoalClosure | None = None
 
     @model_validator(mode="after")
     def validate_goal_shape(self):
-        if self.decision == "propose_goal" and self.goal is None:
-            raise ValueError("propose_goal requires goal")
-        if self.decision != "propose_goal" and self.goal is not None:
-            raise ValueError("goal is only allowed with propose_goal")
+        expected = {
+            "propose_goal": ("goal",),
+            "update_goal": ("goal_update",),
+            "complete_goal": ("goal_closure",),
+            "abandon_goal": ("goal_closure",),
+        }
+
+        populated = {
+            name
+            for name, value in (
+                ("goal", self.goal),
+                ("goal_update", self.goal_update),
+                ("goal_closure", self.goal_closure),
+            )
+            if value is not None
+        }
+
+        required = set(expected.get(self.decision, ()))
+        if populated != required:
+            raise ValueError(
+                f"{self.decision} requires exactly {sorted(required)}, "
+                f"received {sorted(populated)}"
+            )
         return self
 
 
@@ -46,6 +85,7 @@ class ModelRequest(StrictModel):
     response_schema: Literal[
         "CognitionDecision/v0.1",
         "CognitionDecision/v0.2",
+        "CognitionDecision/v0.3",
     ] = "CognitionDecision/v0.1"
 
 
