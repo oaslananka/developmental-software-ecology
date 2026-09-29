@@ -13,7 +13,6 @@ from dse.contracts.forge import (
     ForgeCommitRecord,
     ForgeRepositoryRecord,
 )
-from dse.engine.hashing import state_hash
 from dse.engine.world import WorldState
 
 
