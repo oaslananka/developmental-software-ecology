@@ -122,3 +122,22 @@ The next milestone should implement and deploy the worker-side runtime:
 
 Only after that deployment should the first replicated P/T/E/ES/RIL pilot be
 treated as research-runtime-ready.
+
+
+## M18 protocol hardening
+
+M18 strengthens this transport contract in three ways.
+
+First, the handshake carries the full sandbox policy snapshot as well as the
+policy hash. This lets the worker enforce and measure the concrete resource
+limits it is attesting.
+
+Second, the handshake and evaluation result bind immutable
+`worker_build_sha256` and `runtime_build_sha256` values. The control plane
+rejects build drift within a session and persists the hashes in the scientific
+evaluation report.
+
+Third, sandbox evidence is explicitly classified as `test-fixture` or
+`runtime-measured`. Mock HTTP acceptance tests remain `test-fixture` and
+cannot clear the research-readiness gate. A real deployment must produce
+`runtime-measured` evidence from the actual isolation environment.
