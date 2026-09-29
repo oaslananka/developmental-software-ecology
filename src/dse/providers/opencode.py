@@ -39,7 +39,9 @@ class OpenCodeProvider:
             "model": self.model,
             "temperature": 0,
             "max_tokens": (
-                420
+                520
+                if request.response_schema == "CognitionDecision/v0.4"
+                else 420
                 if request.response_schema == "CognitionDecision/v0.3"
                 else 320
                 if request.response_schema == "CognitionDecision/v0.2"
@@ -88,18 +90,28 @@ class OpenCodeProvider:
                 "update_goal",
                 "complete_goal",
                 "abandon_goal",
+                "propose_action",
             }
         ):
             raise ProviderResponseError(
-                "CognitionDecision/v0.1 does not allow goal decisions"
+                "CognitionDecision/v0.1 does not allow goal/action decisions"
             )
 
         if (
             request.response_schema == "CognitionDecision/v0.2"
-            and decision.decision in {"update_goal", "complete_goal", "abandon_goal"}
+            and decision.decision
+            in {"update_goal", "complete_goal", "abandon_goal", "propose_action"}
         ):
             raise ProviderResponseError(
-                "CognitionDecision/v0.2 does not allow goal lifecycle decisions"
+                "CognitionDecision/v0.2 does not allow lifecycle/action decisions"
+            )
+
+        if (
+            request.response_schema == "CognitionDecision/v0.3"
+            and decision.decision == "propose_action"
+        ):
+            raise ProviderResponseError(
+                "CognitionDecision/v0.3 does not allow action proposals"
             )
 
         usage_data = response_data.get("usage") or {}
@@ -129,6 +141,22 @@ class OpenCodeProvider:
         )
 
     def _system_prompt(self, request: ModelRequest) -> str:
+        if request.response_schema == "CognitionDecision/v0.4":
+            return (
+                "Return exactly one JSON object. Allowed decisions are "
+                '"idle", "observe", "propose_goal", "update_goal", '
+                '"complete_goal", "abandon_goal", or "propose_action". '
+                "For propose_action, include only action with kind, summary, target, "
+                "rationale, expected_value, estimated_cost, and draft_content. "
+                "Allowed action kinds are inspect_workspace, draft_artifact, run_validation. "
+                "draft_artifact requires draft_content; all other kinds require it to be null. "
+                "Action proposals are intents only and are NOT executed. "
+                "Only propose_action when an active_goal exists and "
+                "action_proposals_remaining is greater than zero. "
+                "Use goal/goal_update/goal_closure exactly as required by v0.3 goal decisions. "
+                "Do not include markdown or extra fields."
+            )
+
         if request.response_schema == "CognitionDecision/v0.3":
             return (
                 "Return exactly one JSON object. Allowed decisions are "
@@ -141,7 +169,7 @@ class OpenCodeProvider:
                 "progress_summary, confidence. Progress must increase and remain below 1.0. "
                 'For complete_goal or abandon_goal, include only "goal_closure" '
                 "with summary and confidence. "
-                "For idle or observe, goal, goal_update, and goal_closure must all be null. "
+                "For idle or observe, goal, goal_update, goal_closure, and action must be null. "
                 "Only propose a goal when context.active_goal is null. "
                 "Only update/complete/abandon when context.active_goal is present. "
                 "Do not include markdown or extra fields."
@@ -152,12 +180,12 @@ class OpenCodeProvider:
                 "Return exactly one JSON object. Allowed decisions are "
                 '"idle", "observe", or "propose_goal". '
                 'Fields: "decision", "reason_summary", "confidence", "focus", "goal", '
-                '"goal_update", "goal_closure". '
+                '"goal_update", "goal_closure", "action". '
                 "When decision is propose_goal, goal must be an object with "
                 '"title", "description", "motivation_summary", "expected_value", '
                 '"estimated_cost", and "confidence". All numeric values must be 0..1. '
                 "For idle or observe, goal must be null. "
-                "goal_update and goal_closure must always be null in v0.2. "
+                "goal_update, goal_closure, and action must always be null in v0.2. "
                 "Only propose a goal when context.goal_generation_enabled is true and "
                 "context.active_goal is null. Do not include markdown or extra fields."
             )
@@ -166,7 +194,7 @@ class OpenCodeProvider:
             "Return exactly one JSON object matching this schema: "
             '{"decision":"idle|observe","reason_summary":"short text",'
             '"confidence":0.0,"focus":"optional short text or null",'
-            '"goal":null,"goal_update":null,"goal_closure":null}. '
+            '"goal":null,"goal_update":null,"goal_closure":null,"action":null}. '
             "Do not include markdown or additional fields."
         )
 
