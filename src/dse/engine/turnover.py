@@ -49,8 +49,8 @@ def process_scheduled_turnovers(
                     "reason": "scheduled_turnover",
                     "private_state_counts": counts,
                     "public_forge_hash": forge_hash,
-                    "public_text_hash": text_hash,
-                    "public_social_hash": social_hash,
+                    "text_culture_hash": text_hash,
+                    "social_world_hash": social_hash,
                 },
             )
         )
@@ -65,8 +65,8 @@ def process_scheduled_turnovers(
                     "birth_tick": world.tick,
                     "traits_preserved": True,
                     "public_forge_hash": forge_hash,
-                    "public_text_hash": text_hash,
-                    "public_social_hash": social_hash,
+                    "text_culture_hash": text_hash,
+                    "social_world_hash": social_hash,
                 },
             )
         )
