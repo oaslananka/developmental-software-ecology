@@ -49,6 +49,14 @@ class ExternalHiddenEvaluatorSession:
         return self._handshake.service_id
 
     @property
+    def worker_build_sha256(self) -> str:
+        return self._handshake.worker_build_sha256
+
+    @property
+    def runtime_build_sha256(self) -> str:
+        return self._handshake.runtime_build_sha256
+
+    @property
     def attestation(self):
         return self._handshake.attestation
 
@@ -75,6 +83,14 @@ class ExternalHiddenEvaluatorSession:
         if result.runner_version != self.runner_version:
             raise ExternalEvaluatorProtocolError(
                 "external evaluator runner_version changed after handshake"
+            )
+        if result.worker_build_sha256 != self.worker_build_sha256:
+            raise ExternalEvaluatorProtocolError(
+                "external evaluator worker build changed after handshake"
+            )
+        if result.runtime_build_sha256 != self.runtime_build_sha256:
+            raise ExternalEvaluatorProtocolError(
+                "external evaluator runtime build changed after handshake"
             )
         return result
 
@@ -128,6 +144,7 @@ class ExternalEvaluatorClient:
             experiment_id=manifest.experiment.id,
             suite_id=config.suite_id,
             suite_hash=config.suite_hash,
+            policy=config.sandbox_policy,
             policy_hash=policy_hash,
         )
 
