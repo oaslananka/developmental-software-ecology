@@ -1,5 +1,7 @@
 from dse.contracts.model import (
     CognitionDecision,
+    GoalClosure,
+    GoalProgressUpdate,
     GoalProposal,
     ModelRequest,
     ModelResponse,
@@ -26,7 +28,10 @@ class DeterministicFakeProvider:
         active_goal = request.context.get("active_goal")
 
         if (
-            request.response_schema == "CognitionDecision/v0.2"
+            request.response_schema in {
+                "CognitionDecision/v0.2",
+                "CognitionDecision/v0.3",
+            }
             and goal_generation_enabled
             and active_goal is None
         ):
@@ -50,6 +55,51 @@ class DeterministicFakeProvider:
                 focus="environment",
                 goal=goal,
             )
+        elif request.response_schema == "CognitionDecision/v0.3" and active_goal is not None:
+            progress = float(active_goal.get("progress", 0.0))
+
+            if progress < 0.4:
+                decision = CognitionDecision(
+                    decision="update_goal",
+                    reason_summary="The active objective has accumulated initial progress.",
+                    confidence=0.8,
+                    focus="environment",
+                    goal_update=GoalProgressUpdate(
+                        progress=0.4,
+                        progress_summary=(
+                            "Initial recurring patterns have been identified and retained."
+                        ),
+                        confidence=0.8,
+                    ),
+                )
+            elif progress < 0.8:
+                decision = CognitionDecision(
+                    decision="update_goal",
+                    reason_summary="The active objective has accumulated substantial progress.",
+                    confidence=0.85,
+                    focus="environment",
+                    goal_update=GoalProgressUpdate(
+                        progress=0.8,
+                        progress_summary=(
+                            "The recurring pattern hypothesis has been refined across observations."
+                        ),
+                        confidence=0.85,
+                    ),
+                )
+            else:
+                decision = CognitionDecision(
+                    decision="complete_goal",
+                    reason_summary="The active inquiry has reached its intended stopping point.",
+                    confidence=0.9,
+                    focus="environment",
+                    goal_closure=GoalClosure(
+                        summary=(
+                            "A stable recurring-pattern hypothesis was formed and refined "
+                            "across multiple cognition cycles."
+                        ),
+                        confidence=0.9,
+                    ),
+                )
         else:
             selector = int(request_hash[:8], 16) % 2
             decision = CognitionDecision(
