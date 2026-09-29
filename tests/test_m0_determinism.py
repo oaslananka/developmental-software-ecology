@@ -4,9 +4,12 @@ from pathlib import Path
 from dse.contracts.experiment import load_manifest
 from dse.engine.reducer import apply_event
 from dse.engine.scheduler import advance_ticks
-from dse.engine.snapshot import restore_world, serialize_world, world_state_hash
+from dse.engine.snapshot import (
+    restore_world,
+    serialize_world,
+    world_state_hash,
+)
 from dse.engine.world import create_world
-
 
 MANIFEST = Path("experiments/v0_1/empty-world.yaml")
 
