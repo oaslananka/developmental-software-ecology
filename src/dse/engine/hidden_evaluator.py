@@ -247,6 +247,7 @@ async def evaluate_hidden_functional_culture(
         "duration_ms": result.duration_ms,
         "policy_hash": request.policy_hash,
         "attestation_id": request.attestation_id,
+        "attestation_evidence_kind": attestation.evidence_kind,
         "backend": request.backend,
         "backend_version": request.backend_version,
         "runner_kind": result.runner_kind,
