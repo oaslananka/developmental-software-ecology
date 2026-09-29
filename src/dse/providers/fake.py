@@ -1,4 +1,5 @@
 from dse.contracts.model import (
+    ActionProposal,
     CognitionDecision,
     GoalClosure,
     GoalProgressUpdate,
@@ -25,12 +26,20 @@ class DeterministicFakeProvider:
         goal_generation_enabled = bool(
             request.context.get("goal_generation_enabled", False)
         )
+        action_generation_enabled = bool(
+            request.context.get("action_generation_enabled", False)
+        )
         active_goal = request.context.get("active_goal")
+        action_budget = int(
+            request.context.get("action_proposals_remaining", 0) or 0
+        )
 
         if (
-            request.response_schema in {
+            request.response_schema
+            in {
                 "CognitionDecision/v0.2",
                 "CognitionDecision/v0.3",
+                "CognitionDecision/v0.4",
             }
             and goal_generation_enabled
             and active_goal is None
@@ -55,6 +64,109 @@ class DeterministicFakeProvider:
                 focus="environment",
                 goal=goal,
             )
+        elif (
+            request.response_schema == "CognitionDecision/v0.4"
+            and action_generation_enabled
+            and active_goal is not None
+            and float(active_goal.get("progress", 0.0)) == 0.0
+            and action_budget >= 2
+        ):
+            decision = CognitionDecision(
+                decision="propose_action",
+                reason_summary=(
+                    "Inspecting the workspace is the next bounded step toward the active goal."
+                ),
+                confidence=0.85,
+                focus="workspace",
+                action=ActionProposal(
+                    kind="inspect_workspace",
+                    summary="Inspect the current workspace structure.",
+                    target="workspace",
+                    rationale=(
+                        "The active goal needs grounded context before an artifact is drafted."
+                    ),
+                    expected_value=0.8,
+                    estimated_cost=0.2,
+                ),
+            )
+        elif (
+            request.response_schema == "CognitionDecision/v0.4"
+            and action_generation_enabled
+            and active_goal is not None
+            and float(active_goal.get("progress", 0.0)) == 0.0
+            and action_budget == 1
+        ):
+            decision = CognitionDecision(
+                decision="propose_action",
+                reason_summary=(
+                    "A draft artifact would externalize the current working hypothesis."
+                ),
+                confidence=0.85,
+                focus="artifact",
+                action=ActionProposal(
+                    kind="draft_artifact",
+                    summary="Draft a short hypothesis artifact.",
+                    target="notes/recurring-patterns.md",
+                    rationale=(
+                        "Externalizing the hypothesis creates a persistent object for later work."
+                    ),
+                    expected_value=0.85,
+                    estimated_cost=0.35,
+                    draft_content=(
+                        "# Recurring Pattern Hypothesis\n\n"
+                        "Initial observations suggest recurring environmental signals "
+                        "worth validating in later cycles.\n"
+                    ),
+                ),
+            )
+        elif (
+            request.response_schema == "CognitionDecision/v0.4"
+            and active_goal is not None
+        ):
+            progress = float(active_goal.get("progress", 0.0))
+
+            if progress < 0.5:
+                decision = CognitionDecision(
+                    decision="update_goal",
+                    reason_summary="The bounded action intents establish initial progress.",
+                    confidence=0.8,
+                    focus="environment",
+                    goal_update=GoalProgressUpdate(
+                        progress=0.5,
+                        progress_summary=(
+                            "Workspace inspection and artifact drafting were proposed."
+                        ),
+                        confidence=0.8,
+                    ),
+                )
+            elif progress < 0.8:
+                decision = CognitionDecision(
+                    decision="update_goal",
+                    reason_summary="The active objective has accumulated substantial progress.",
+                    confidence=0.85,
+                    focus="environment",
+                    goal_update=GoalProgressUpdate(
+                        progress=0.8,
+                        progress_summary=(
+                            "The recurring pattern hypothesis has been refined conceptually."
+                        ),
+                        confidence=0.85,
+                    ),
+                )
+            else:
+                decision = CognitionDecision(
+                    decision="complete_goal",
+                    reason_summary="The internal inquiry has reached its intended stopping point.",
+                    confidence=0.9,
+                    focus="environment",
+                    goal_closure=GoalClosure(
+                        summary=(
+                            "A stable recurring-pattern hypothesis and bounded action intents "
+                            "were formed across cognition cycles."
+                        ),
+                        confidence=0.9,
+                    ),
+                )
         elif request.response_schema == "CognitionDecision/v0.3" and active_goal is not None:
             progress = float(active_goal.get("progress", 0.0))
 

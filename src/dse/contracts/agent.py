@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class LifecycleState(StrEnum):
@@ -18,6 +18,10 @@ class GoalStatus(StrEnum):
     ABANDONED = "abandoned"
 
 
+class ActionStatus(StrEnum):
+    PROPOSED = "proposed"
+
+
 class TraitState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -33,6 +37,7 @@ class ResourceState(BaseModel):
     activity_units_remaining: int = Field(ge=0)
     sleep_ticks_remaining: int = Field(default=0, ge=0)
     model_calls_remaining: int = Field(default=0, ge=0)
+    action_proposals_remaining: int = Field(default=0, ge=0)
     cycles_completed: int = Field(default=0, ge=0)
 
 
@@ -76,6 +81,41 @@ class GoalState(BaseModel):
     goals: list[GoalRecord] = Field(default_factory=list)
 
 
+class ActionIntentRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action_id: str = Field(min_length=1)
+    created_tick: int = Field(ge=0)
+    source_event_id: str = Field(min_length=1)
+    goal_id: str = Field(min_length=1)
+    kind: str = Field(
+        pattern="^(inspect_workspace|draft_artifact|run_validation)$"
+    )
+    summary: str = Field(min_length=1, max_length=240)
+    target: str = Field(min_length=1, max_length=200)
+    rationale: str = Field(min_length=1, max_length=240)
+    expected_value: float = Field(ge=0.0, le=1.0)
+    estimated_cost: float = Field(ge=0.0, le=1.0)
+    draft_content: str | None = Field(default=None, max_length=4000)
+    status: ActionStatus = ActionStatus.PROPOSED
+
+    @model_validator(mode="after")
+    def validate_draft_content(self):
+        if self.kind == "draft_artifact" and not self.draft_content:
+            raise ValueError("draft_artifact requires draft_content")
+        if self.kind != "draft_artifact" and self.draft_content is not None:
+            raise ValueError(
+                "draft_content is only allowed for draft_artifact"
+            )
+        return self
+
+
+class ActionState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    proposals: list[ActionIntentRecord] = Field(default_factory=list)
+
+
 class EpisodicMemory(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -106,6 +146,7 @@ class AgentState(BaseModel):
     resources: ResourceState
     cognition: CognitionState = Field(default_factory=CognitionState)
     goals: GoalState = Field(default_factory=GoalState)
+    actions: ActionState = Field(default_factory=ActionState)
     memory: MemoryState = Field(default_factory=MemoryState)
     last_active_tick: int = Field(default=0, ge=0)
     state_version: int = Field(default=0, ge=0)

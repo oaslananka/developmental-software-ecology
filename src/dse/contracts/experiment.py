@@ -47,6 +47,11 @@ class GoalConfig(StrictModel):
     max_active_goals: int = Field(default=1, ge=1, le=1)
 
 
+class ActionConfig(StrictModel):
+    enabled: bool = False
+    proposals_per_cycle: int = Field(default=0, ge=0)
+
+
 class MemoryConfig(StrictModel):
     enabled: bool = False
     capacity: int = Field(default=32, ge=1)
@@ -74,6 +79,7 @@ class AgentConfig(StrictModel):
     lifecycle: LifecycleConfig = Field(default_factory=LifecycleConfig)
     cognition: CognitionConfig = Field(default_factory=CognitionConfig)
     goals: GoalConfig = Field(default_factory=GoalConfig)
+    actions: ActionConfig = Field(default_factory=ActionConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     sleep_memory: SleepMemoryConfig = Field(default_factory=SleepMemoryConfig)
 

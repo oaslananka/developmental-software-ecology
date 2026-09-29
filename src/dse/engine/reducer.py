@@ -1,4 +1,11 @@
-from dse.contracts.agent import EpisodicMemory, GoalRecord, GoalStatus, LifecycleState
+from dse.contracts.agent import (
+    ActionIntentRecord,
+    ActionStatus,
+    EpisodicMemory,
+    GoalRecord,
+    GoalStatus,
+    LifecycleState,
+)
 from dse.contracts.event import WorldEvent
 from dse.engine.world import WorldState
 
@@ -33,6 +40,9 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             agent.resources.activity_units_remaining = int(event.payload["activity_units"])
             agent.resources.sleep_ticks_remaining = 0
             agent.resources.model_calls_remaining = int(event.payload.get("model_calls", 0))
+            agent.resources.action_proposals_remaining = int(
+                event.payload.get("action_proposals", 0)
+            )
             agent.resources.cycles_completed += int(
                 event.payload.get("cycles_completed_delta", 0)
             )
@@ -56,6 +66,16 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             if agent.resources.model_calls_remaining < amount:
                 raise ValueError("Model-call budget cannot become negative")
             agent.resources.model_calls_remaining -= amount
+            agent.state_version += 1
+
+        case "resource.action_proposal.consumed":
+            agent = _agent_for_event(world, event)
+            amount = int(event.payload.get("amount", 1))
+            if amount <= 0:
+                raise ValueError("Action-proposal consumption must be positive")
+            if agent.resources.action_proposals_remaining < amount:
+                raise ValueError("Action-proposal budget cannot become negative")
+            agent.resources.action_proposals_remaining -= amount
             agent.state_version += 1
 
         case "agent.activity.idle":
@@ -157,6 +177,28 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             agent.state_version += 1
 
         case "agent.goal.proposal_rejected":
+            pass
+
+        case "agent.action.proposed":
+            agent = _agent_for_event(world, event)
+            action = ActionIntentRecord.model_validate(event.payload)
+
+            if action.status != ActionStatus.PROPOSED:
+                raise ValueError("New action intents must start proposed")
+            if agent.goals.active_goal_id != action.goal_id:
+                raise ValueError(
+                    "Action intent must reference the currently active goal"
+                )
+            if any(
+                existing.action_id == action.action_id
+                for existing in agent.actions.proposals
+            ):
+                raise ValueError(f"Duplicate action ID: {action.action_id}")
+
+            agent.actions.proposals.append(action)
+            agent.state_version += 1
+
+        case "agent.action.rejected":
             pass
 
         case "memory.episode.recorded":
