@@ -61,6 +61,20 @@ class ToolBrokerConfig(StrictModel):
     ] = "deterministic-fake"
 
 
+class SandboxPolicyConfig(StrictModel):
+    backend: Literal["none", "external-hardened"] = "none"
+    network_enabled: Literal[False] = False
+    host_mounts_enabled: Literal[False] = False
+    secrets_enabled: Literal[False] = False
+    shell_enabled: Literal[False] = False
+    cpu_seconds: int = Field(default=2, ge=1, le=60)
+    memory_mb: int = Field(default=256, ge=64, le=4096)
+    pids_max: int = Field(default=32, ge=1, le=256)
+    disk_mb: int = Field(default=64, ge=1, le=1024)
+    output_bytes: int = Field(default=65_536, ge=1024, le=4_194_304)
+    wall_timeout_seconds: int = Field(default=5, ge=1, le=120)
+
+
 class MemoryConfig(StrictModel):
     enabled: bool = False
     capacity: int = Field(default=32, ge=1)
@@ -99,6 +113,9 @@ class RuntimeConfig(StrictModel):
     forge_enabled: bool = False
     sandbox_enabled: bool = False
     web_enabled: bool = False
+    sandbox_policy: SandboxPolicyConfig = Field(
+        default_factory=SandboxPolicyConfig
+    )
     model_provider: ModelProviderConfig = Field(default_factory=ModelProviderConfig)
 
 
