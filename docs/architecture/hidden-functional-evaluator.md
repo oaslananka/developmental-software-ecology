@@ -27,26 +27,24 @@ Only a suite identity and cryptographic hash are manifest-visible.
 
 ## Separate evaluation config
 
-The evaluator is top-level experiment configuration rather than daily agent runtime:
+The evaluator is top-level experiment configuration rather than daily agent runtime.
+
+The five strict P/T/E/ES/RIL YAML manifests select one immutable versioned profile:
 
 ```yaml
-evaluation:
-  enabled: true
-  suite_id: v0_1-hidden-functional-suite
-  suite_hash: <sha256>
-  sandbox_enabled: true
-  sandbox_policy:
-    backend: external-hardened
-    network_enabled: false
-    host_mounts_enabled: false
-    secrets_enabled: false
-    shell_enabled: false
-    ...
+evaluation_profile: v0_1-hidden-functional-suite
 ```
 
-All five P/T/E/ES/RIL manifests pin the same evaluator configuration.
+That profile resolves to the full pinned suite identity, limits and
+`external-hardened` sandbox policy before manifest validation. The canonical
+manifest persisted for provenance contains both the profile identifier and the
+fully resolved evaluation config. Re-loading that canonical form is accepted
+only when the expanded config exactly matches the selected profile; drift fails
+closed.
 
-This avoids changing the agent compute budget by condition.
+This removes duplicated condition YAML while preserving a complete immutable
+manifest hash and keeps evaluator configuration identical without changing the
+agent compute budget by condition.
 
 ## Evaluation snapshot
 
