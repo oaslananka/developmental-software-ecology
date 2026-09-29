@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 IMAGE = os.environ.get("DSE_GVISOR_PROBE_IMAGE", "python:3.12-slim")
-PID_PROBE_MEMORY = "512m"
+PID_PROBE_MEMORY = "2g"
 # Keep the control ceiling well above the 64-fork workload so the A/B probe
 # isolates PID pressure rather than gVisor/runtime-internal task overhead.
 PID_PROBE_CONTROL_LIMIT = 512
