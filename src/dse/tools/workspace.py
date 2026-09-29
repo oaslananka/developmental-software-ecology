@@ -50,6 +50,12 @@ class EphemeralLocalWorkspaceExecutor:
             if not self._is_within_root(resolved_parent):
                 return "workspace_escape"
 
+            if (
+                not target.exists()
+                and self._workspace_entry_count() >= self.max_entries
+            ):
+                return "workspace_entry_limit"
+
         return None
 
     async def execute(
@@ -245,6 +251,17 @@ class EphemeralLocalWorkspaceExecutor:
             ),
             result_data=result_data,
         )
+
+    def _workspace_entry_count(self) -> int:
+        count = 0
+        for _current_root, dirnames, filenames in os.walk(
+            self.workspace_root,
+            followlinks=False,
+        ):
+            count += len(dirnames) + len(filenames)
+            if count >= self.max_entries:
+                return count
+        return count
 
     def _resolve_target(self, target: str) -> Path | None:
         normalized = target.replace("\\", "/")
