@@ -39,7 +39,9 @@ class OpenCodeProvider:
             "model": self.model,
             "temperature": 0,
             "max_tokens": (
-                320
+                420
+                if request.response_schema == "CognitionDecision/v0.3"
+                else 320
                 if request.response_schema == "CognitionDecision/v0.2"
                 else 160
             ),
@@ -80,10 +82,24 @@ class OpenCodeProvider:
 
         if (
             request.response_schema == "CognitionDecision/v0.1"
-            and decision.decision == "propose_goal"
+            and decision.decision
+            in {
+                "propose_goal",
+                "update_goal",
+                "complete_goal",
+                "abandon_goal",
+            }
         ):
             raise ProviderResponseError(
-                "CognitionDecision/v0.1 does not allow goal proposals"
+                "CognitionDecision/v0.1 does not allow goal decisions"
+            )
+
+        if (
+            request.response_schema == "CognitionDecision/v0.2"
+            and decision.decision in {"update_goal", "complete_goal", "abandon_goal"}
+        ):
+            raise ProviderResponseError(
+                "CognitionDecision/v0.2 does not allow goal lifecycle decisions"
             )
 
         usage_data = response_data.get("usage") or {}
@@ -113,15 +129,35 @@ class OpenCodeProvider:
         )
 
     def _system_prompt(self, request: ModelRequest) -> str:
+        if request.response_schema == "CognitionDecision/v0.3":
+            return (
+                "Return exactly one JSON object. Allowed decisions are "
+                '"idle", "observe", "propose_goal", "update_goal", '
+                '"complete_goal", or "abandon_goal". '
+                'Always include "decision", "reason_summary", "confidence", and "focus". '
+                'For propose_goal, include only "goal" with title, description, '
+                "motivation_summary, expected_value, estimated_cost, confidence. "
+                'For update_goal, include only "goal_update" with progress, '
+                "progress_summary, confidence. Progress must increase and remain below 1.0. "
+                'For complete_goal or abandon_goal, include only "goal_closure" '
+                "with summary and confidence. "
+                "For idle or observe, goal, goal_update, and goal_closure must all be null. "
+                "Only propose a goal when context.active_goal is null. "
+                "Only update/complete/abandon when context.active_goal is present. "
+                "Do not include markdown or extra fields."
+            )
+
         if request.response_schema == "CognitionDecision/v0.2":
             return (
                 "Return exactly one JSON object. Allowed decisions are "
                 '"idle", "observe", or "propose_goal". '
-                'Fields: "decision", "reason_summary", "confidence", "focus", "goal". '
+                'Fields: "decision", "reason_summary", "confidence", "focus", "goal", '
+                '"goal_update", "goal_closure". '
                 "When decision is propose_goal, goal must be an object with "
                 '"title", "description", "motivation_summary", "expected_value", '
                 '"estimated_cost", and "confidence". All numeric values must be 0..1. '
-                "When decision is idle or observe, goal must be null. "
+                "For idle or observe, goal must be null. "
+                "goal_update and goal_closure must always be null in v0.2. "
                 "Only propose a goal when context.goal_generation_enabled is true and "
                 "context.active_goal is null. Do not include markdown or extra fields."
             )
@@ -129,7 +165,8 @@ class OpenCodeProvider:
         return (
             "Return exactly one JSON object matching this schema: "
             '{"decision":"idle|observe","reason_summary":"short text",'
-            '"confidence":0.0,"focus":"optional short text or null","goal":null}. '
+            '"confidence":0.0,"focus":"optional short text or null",'
+            '"goal":null,"goal_update":null,"goal_closure":null}. '
             "Do not include markdown or additional fields."
         )
 
