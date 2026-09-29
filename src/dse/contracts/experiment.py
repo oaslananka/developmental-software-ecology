@@ -73,6 +73,9 @@ class ForgeConfig(StrictModel):
     max_artifact_bytes: int = Field(default=16_384, ge=1, le=65_536)
     max_repositories: int = Field(default=32, ge=1, le=256)
     max_artifacts_per_repository: int = Field(default=256, ge=1, le=4096)
+    operations_per_cycle: int = Field(default=0, ge=0, le=64)
+    inspection_artifact_limit: int = Field(default=16, ge=1, le=64)
+    inspection_content_chars: int = Field(default=2048, ge=0, le=8192)
 
 
 class SandboxPolicyConfig(StrictModel):
