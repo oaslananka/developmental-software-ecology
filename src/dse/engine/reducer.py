@@ -2,6 +2,7 @@ from dse.contracts.agent import (
     ActionIntentRecord,
     ActionStatus,
     EpisodicMemory,
+    ForgeActionResultRecord,
     GoalRecord,
     GoalStatus,
     LifecycleState,
@@ -52,6 +53,9 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             agent.resources.tool_executions_remaining = int(
                 event.payload.get("tool_executions", 0)
             )
+            agent.resources.forge_operations_remaining = int(
+                event.payload.get("forge_operations", 0)
+            )
             agent.resources.cycles_completed += int(
                 event.payload.get("cycles_completed_delta", 0)
             )
@@ -95,6 +99,16 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             if agent.resources.tool_executions_remaining < amount:
                 raise ValueError("Tool-execution budget cannot become negative")
             agent.resources.tool_executions_remaining -= amount
+            agent.state_version += 1
+
+        case "resource.forge_operation.consumed":
+            agent = _agent_for_event(world, event)
+            amount = int(event.payload.get("amount", 1))
+            if amount <= 0:
+                raise ValueError("Forge-operation consumption must be positive")
+            if agent.resources.forge_operations_remaining < amount:
+                raise ValueError("Forge-operation budget cannot become negative")
+            agent.resources.forge_operations_remaining -= amount
             agent.state_version += 1
 
         case "agent.activity.idle":
@@ -365,6 +379,50 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
 
         case "forge.operation.rejected":
             _agent_for_event(world, event)
+
+        case "forge.action.completed":
+            agent = _agent_for_event(world, event)
+            action = _proposed_action(agent, str(event.payload["action_id"]))
+            result = ForgeActionResultRecord.model_validate(
+                event.payload["result"]
+            )
+            if not action.kind.startswith("forge_"):
+                raise ValueError("Forge action result requires forge_* action")
+            if result.action_id != action.action_id:
+                raise ValueError("Forge result action_id mismatch")
+            if result.status != "completed":
+                raise ValueError("Completed forge action requires completed result")
+            if any(
+                existing.result_id == result.result_id
+                for existing in agent.actions.forge_results
+            ):
+                raise ValueError(f"Duplicate forge result ID: {result.result_id}")
+
+            action.status = ActionStatus.EXECUTED
+            agent.actions.forge_results.append(result)
+            agent.state_version += 1
+
+        case "forge.action.rejected":
+            agent = _agent_for_event(world, event)
+            action = _proposed_action(agent, str(event.payload["action_id"]))
+            result = ForgeActionResultRecord.model_validate(
+                event.payload["result"]
+            )
+            if not action.kind.startswith("forge_"):
+                raise ValueError("Forge action rejection requires forge_* action")
+            if result.action_id != action.action_id:
+                raise ValueError("Forge rejection action_id mismatch")
+            if result.status != "rejected":
+                raise ValueError("Rejected forge action requires rejected result")
+            if any(
+                existing.result_id == result.result_id
+                for existing in agent.actions.forge_results
+            ):
+                raise ValueError(f"Duplicate forge result ID: {result.result_id}")
+
+            action.status = ActionStatus.REJECTED
+            agent.actions.forge_results.append(result)
+            agent.state_version += 1
 
         case "memory.episode.recorded":
             agent = _agent_for_event(world, event)
