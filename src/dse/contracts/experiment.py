@@ -35,9 +35,16 @@ class LifecycleConfig(StrictModel):
     sleep_ticks_per_cycle: int = Field(default=480, gt=0)
 
 
+class CognitionConfig(StrictModel):
+    enabled: bool = False
+    model_calls_per_cycle: int = Field(default=0, ge=0)
+    interval_ticks: int = Field(default=200, gt=0)
+
+
 class AgentConfig(StrictModel):
     initial_traits: TraitConfig
     lifecycle: LifecycleConfig = Field(default_factory=LifecycleConfig)
+    cognition: CognitionConfig = Field(default_factory=CognitionConfig)
 
 
 class RuntimeConfig(StrictModel):
