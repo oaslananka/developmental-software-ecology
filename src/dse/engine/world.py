@@ -16,6 +16,7 @@ def create_world(manifest: ExperimentManifest) -> WorldState:
     world = WorldState(experiment_id=manifest.experiment.id)
     traits = manifest.agents.initial_traits
     lifecycle = manifest.agents.lifecycle
+    cognition = manifest.agents.cognition
 
     for index in range(manifest.world.agent_count):
         agent_id = f"agent-{index + 1:04d}"
@@ -30,6 +31,7 @@ def create_world(manifest: ExperimentManifest) -> WorldState:
             ),
             resources=ResourceState(
                 activity_units_remaining=lifecycle.active_ticks_per_cycle,
+                model_calls_remaining=cognition.model_calls_per_cycle,
             ),
         )
 
