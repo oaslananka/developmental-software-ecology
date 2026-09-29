@@ -83,11 +83,11 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             if event.payload["public_forge_hash"] != forge_hash:
                 raise ValueError("Turnover public Forge hash mismatch")
             text_hash = state_hash(world.text_culture.model_dump(mode="json"))
-            if event.payload["public_text_hash"] != text_hash:
-                raise ValueError("Turnover public text hash mismatch")
+            if event.payload["text_culture_hash"] != text_hash:
+                raise ValueError("Turnover text culture hash mismatch")
             social_hash = state_hash(world.social.model_dump(mode="json"))
-            if event.payload["public_social_hash"] != social_hash:
-                raise ValueError("Turnover public social hash mismatch")
+            if event.payload["social_world_hash"] != social_hash:
+                raise ValueError("Turnover social world hash mismatch")
 
             agent.lifecycle_state = LifecycleState.TURNED_OVER
             agent.state_version += 1
@@ -113,11 +113,11 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             if event.payload["public_forge_hash"] != forge_hash:
                 raise ValueError("Replacement public Forge hash mismatch")
             text_hash = state_hash(world.text_culture.model_dump(mode="json"))
-            if event.payload["public_text_hash"] != text_hash:
-                raise ValueError("Replacement public text hash mismatch")
+            if event.payload["text_culture_hash"] != text_hash:
+                raise ValueError("Replacement text culture hash mismatch")
             social_hash = state_hash(world.social.model_dump(mode="json"))
-            if event.payload["public_social_hash"] != social_hash:
-                raise ValueError("Replacement public social hash mismatch")
+            if event.payload["social_world_hash"] != social_hash:
+                raise ValueError("Replacement social world hash mismatch")
 
             agent.generation = new_generation
             agent.birth_tick = birth_tick
