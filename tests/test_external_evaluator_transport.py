@@ -7,7 +7,12 @@ import pytest
 
 from dse.contracts.evaluation import HiddenEvaluationRequest
 from dse.contracts.experiment import load_manifest
-from dse.engine.hidden_evaluator import evaluate_hidden_functional_culture
+from dse.engine.hidden_evaluator import (
+    build_culture_evaluation_snapshot,
+    build_hidden_evaluation_plan,
+    evaluate_hidden_functional_culture,
+    hidden_evaluation_plan_hash,
+)
 from dse.engine.sandbox_admission import REQUIRED_SANDBOX_CHECKS
 from dse.engine.world import create_world
 from dse.evaluator.http import (
@@ -315,11 +320,14 @@ def test_session_refuses_evaluation_request_from_another_attestation() -> None:
                 client=http_client,
             )
             session = await client.open_session(manifest)
-            request = HiddenEvaluationRequest.model_construct(
-                request_id="different-request",
-                plan=None,
-                plan_hash="a" * 64,
-                snapshot=None,
+            world = create_world(manifest)
+            snapshot = build_culture_evaluation_snapshot(world, manifest)
+            plan = build_hidden_evaluation_plan(snapshot, manifest)
+            request = HiddenEvaluationRequest(
+                request_id=f"{plan.evaluation_id}:request",
+                plan=plan,
+                plan_hash=hidden_evaluation_plan_hash(plan),
+                snapshot=snapshot,
                 policy=manifest.evaluation.sandbox_policy,
                 policy_hash=session.attestation.policy_hash,
                 attestation_id="different-attestation",
