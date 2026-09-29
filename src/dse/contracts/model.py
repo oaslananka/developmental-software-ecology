@@ -35,6 +35,11 @@ class ActionProposal(StrictModel):
         "forge_create_repository",
         "forge_inspect_repository",
         "forge_publish_artifact",
+        "text_publish",
+        "social_send_message",
+        "social_open_issue",
+        "social_open_pr",
+        "social_post_message",
     ]
     summary: str = Field(min_length=1, max_length=240)
     target: str = Field(min_length=1, max_length=200)
@@ -45,16 +50,27 @@ class ActionProposal(StrictModel):
     repo_id: str | None = Field(default=None, max_length=96)
     parent_artifact_ids: list[str] = Field(default_factory=list, max_length=64)
     expected_parent_commit_id: str | None = Field(default=None, max_length=96)
+    parent_text_entry_ids: list[str] = Field(default_factory=list, max_length=64)
 
     @model_validator(mode="after")
     def validate_action_shape(self):
         forge_publish = self.kind == "forge_publish_artifact"
-        if self.kind in {"draft_artifact", "forge_publish_artifact"}:
+        text_publish = self.kind == "text_publish"
+        content_kinds = {
+            "draft_artifact",
+            "forge_publish_artifact",
+            "text_publish",
+            "social_send_message",
+            "social_open_issue",
+            "social_open_pr",
+            "social_post_message",
+        }
+        if self.kind in content_kinds:
             if not self.draft_content:
                 raise ValueError(f"{self.kind} requires draft_content")
         elif self.draft_content is not None:
             raise ValueError(
-                "draft_content is only allowed for artifact draft/publish actions"
+                "draft_content is only allowed for content-bearing actions"
             )
 
         if forge_publish:
@@ -70,6 +86,10 @@ class ActionProposal(StrictModel):
         if self.expected_parent_commit_id is not None and not forge_publish:
             raise ValueError(
                 "expected_parent_commit_id is only allowed for forge_publish_artifact"
+            )
+        if self.parent_text_entry_ids and not text_publish:
+            raise ValueError(
+                "parent_text_entry_ids are only allowed for text_publish"
             )
         return self
 
@@ -139,6 +159,7 @@ class ModelRequest(StrictModel):
         "CognitionDecision/v0.3",
         "CognitionDecision/v0.4",
         "CognitionDecision/v0.5",
+        "CognitionDecision/v0.6",
     ] = "CognitionDecision/v0.1"
 
 
