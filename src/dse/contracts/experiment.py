@@ -201,6 +201,33 @@ class EvaluationConfig(StrictModel):
         return self
 
 
+def v0_1_hidden_evaluation_payload() -> dict[str, object]:
+    return {
+        "enabled": True,
+        "suite_id": "v0_1-hidden-functional-suite",
+        "suite_hash": (
+            "4791850327e4f4fead67e668c6a4d7e155048653b8cabf5fdede47c31b91f8a4"
+        ),
+        "max_snapshot_artifacts": 512,
+        "max_snapshot_bytes": 1_048_576,
+        "max_cases": 256,
+        "sandbox_enabled": True,
+        "sandbox_policy": {
+            "backend": "external-hardened",
+            "network_enabled": False,
+            "host_mounts_enabled": False,
+            "secrets_enabled": False,
+            "shell_enabled": False,
+            "cpu_seconds": 2,
+            "memory_mb": 256,
+            "pids_max": 32,
+            "disk_mb": 64,
+            "output_bytes": 65_536,
+            "wall_timeout_seconds": 5,
+        },
+    }
+
+
 class MemoryConfig(StrictModel):
     enabled: bool = False
     capacity: int = Field(default=32, ge=1)
@@ -251,12 +278,36 @@ class RuntimeConfig(StrictModel):
 
 class ExperimentManifest(StrictModel):
     schema_version: Literal["0.1"]
+    evaluation_profile: Literal[
+        "none",
+        "v0_1-hidden-functional-suite",
+    ] = "none"
     study: StudyDesignConfig = Field(default_factory=StudyDesignConfig)
     experiment: ExperimentIdentity
     world: WorldConfig
     agents: AgentConfig
     runtime: RuntimeConfig
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_evaluation_profile(cls, value):
+        if not isinstance(value, dict):
+            return value
+
+        profile = value.get("evaluation_profile", "none")
+        if profile == "none":
+            return value
+        if "evaluation" in value:
+            raise ValueError(
+                "evaluation_profile cannot be combined with explicit evaluation"
+            )
+        if profile != "v0_1-hidden-functional-suite":
+            return value
+
+        resolved = dict(value)
+        resolved["evaluation"] = v0_1_hidden_evaluation_payload()
+        return resolved
 
     @model_validator(mode="after")
     def validate_condition_contract(self):
