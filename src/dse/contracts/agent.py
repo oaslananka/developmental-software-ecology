@@ -26,7 +26,18 @@ class ResourceState(BaseModel):
 
     activity_units_remaining: int = Field(ge=0)
     sleep_ticks_remaining: int = Field(default=0, ge=0)
+    model_calls_remaining: int = Field(default=0, ge=0)
     cycles_completed: int = Field(default=0, ge=0)
+
+
+class CognitionState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    calls_completed: int = Field(default=0, ge=0)
+    last_cognition_tick: int | None = Field(default=None, ge=0)
+    last_decision: str | None = None
+    last_reason_summary: str | None = None
+    last_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class AgentState(BaseModel):
@@ -39,5 +50,6 @@ class AgentState(BaseModel):
     lifecycle_state: LifecycleState = LifecycleState.BORN
     traits: TraitState
     resources: ResourceState
+    cognition: CognitionState = Field(default_factory=CognitionState)
     last_active_tick: int = Field(default=0, ge=0)
     state_version: int = Field(default=0, ge=0)
