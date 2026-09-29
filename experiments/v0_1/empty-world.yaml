@@ -1,0 +1,26 @@
+schema_version: "0.1"
+
+experiment:
+  id: "m0-empty-world-seed-42"
+  name: "M0 Deterministic Empty World"
+  condition: "ES"
+  seed: 42
+
+world:
+  agent_count: 5
+  max_world_ticks: 10000
+  tick_duration_sim_seconds: 60
+  snapshot_interval_ticks: 1000
+
+agents:
+  initial_traits:
+    exploration_bias: 0.5
+    persistence: 0.5
+    social_bias: 0.5
+    risk_bias: 0.5
+
+runtime:
+  llm_enabled: false
+  forge_enabled: false
+  sandbox_enabled: false
+  web_enabled: false
