@@ -5,6 +5,7 @@ from dse.contracts.agent import (
     GoalRecord,
     GoalStatus,
     LifecycleState,
+    ToolExecutionRecord,
 )
 from dse.contracts.event import WorldEvent
 from dse.engine.world import WorldState
@@ -43,6 +44,9 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             agent.resources.action_proposals_remaining = int(
                 event.payload.get("action_proposals", 0)
             )
+            agent.resources.tool_executions_remaining = int(
+                event.payload.get("tool_executions", 0)
+            )
             agent.resources.cycles_completed += int(
                 event.payload.get("cycles_completed_delta", 0)
             )
@@ -76,6 +80,16 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             if agent.resources.action_proposals_remaining < amount:
                 raise ValueError("Action-proposal budget cannot become negative")
             agent.resources.action_proposals_remaining -= amount
+            agent.state_version += 1
+
+        case "resource.tool_execution.consumed":
+            agent = _agent_for_event(world, event)
+            amount = int(event.payload.get("amount", 1))
+            if amount <= 0:
+                raise ValueError("Tool-execution consumption must be positive")
+            if agent.resources.tool_executions_remaining < amount:
+                raise ValueError("Tool-execution budget cannot become negative")
+            agent.resources.tool_executions_remaining -= amount
             agent.state_version += 1
 
         case "agent.activity.idle":
@@ -201,6 +215,34 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
         case "agent.action.rejected":
             pass
 
+        case "tool.execution.started":
+            pass
+
+        case "tool.execution.completed":
+            agent = _agent_for_event(world, event)
+            action = _proposed_action(agent, str(event.payload["action_id"]))
+            execution = ToolExecutionRecord.model_validate(event.payload["execution"])
+
+            if execution.action_id != action.action_id:
+                raise ValueError("Execution action_id does not match proposal")
+            if any(
+                existing.execution_id == execution.execution_id
+                for existing in agent.actions.executions
+            ):
+                raise ValueError(
+                    f"Duplicate execution ID: {execution.execution_id}"
+                )
+
+            action.status = ActionStatus.EXECUTED
+            agent.actions.executions.append(execution)
+            agent.state_version += 1
+
+        case "tool.execution.rejected":
+            agent = _agent_for_event(world, event)
+            action = _proposed_action(agent, str(event.payload["action_id"]))
+            action.status = ActionStatus.REJECTED
+            agent.state_version += 1
+
         case "memory.episode.recorded":
             agent = _agent_for_event(world, event)
             memory = EpisodicMemory.model_validate(event.payload)
@@ -268,6 +310,17 @@ def _active_goal(agent, goal_id: str) -> GoalRecord:
             return goal
 
     raise ValueError(f"Unknown goal ID: {goal_id}")
+
+
+def _proposed_action(agent, action_id: str) -> ActionIntentRecord:
+    for action in agent.actions.proposals:
+        if action.action_id == action_id:
+            if action.status != ActionStatus.PROPOSED:
+                raise ValueError(
+                    f"Action {action_id} is not proposed: {action.status}"
+                )
+            return action
+    raise ValueError(f"Unknown action ID: {action_id}")
 
 
 def _find_memory(agent, memory_id: str) -> EpisodicMemory:
