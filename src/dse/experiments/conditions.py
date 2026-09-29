@@ -220,7 +220,7 @@ def assess_condition_support(
         missing.append("issues_pr_messages_runtime")
     elif profile.social_channel == "limited":
         notes.append(
-            "M14 operationalizes Personal-condition limited communication as no "
+            "Personal-condition limited communication is operationalized as no "
             "direct agent-to-agent channel."
         )
 
