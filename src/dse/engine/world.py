@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
 from dse.contracts.agent import AgentState, ResourceState, TraitState
+from dse.contracts.culture import SocialWorldState, TextCultureState
 from dse.contracts.experiment import ExperimentManifest
 from dse.contracts.forge import ForgeWorldState
 
@@ -11,6 +12,8 @@ class WorldState:
     tick: int = 0
     last_sequence_number: int = 0
     agents: dict[str, AgentState] = field(default_factory=dict)
+    text_culture: TextCultureState = field(default_factory=TextCultureState)
+    social: SocialWorldState = field(default_factory=SocialWorldState)
     forge: ForgeWorldState = field(default_factory=ForgeWorldState)
 
 
@@ -22,6 +25,8 @@ def create_world(manifest: ExperimentManifest) -> WorldState:
     actions = manifest.agents.actions
     tool_broker = manifest.agents.tool_broker
     forge = manifest.runtime.forge
+    text_culture = manifest.runtime.text_culture
+    social = manifest.runtime.social
 
     for index in range(manifest.world.agent_count):
         agent_id = f"agent-{index + 1:04d}"
@@ -40,6 +45,8 @@ def create_world(manifest: ExperimentManifest) -> WorldState:
                 action_proposals_remaining=actions.proposals_per_cycle,
                 tool_executions_remaining=tool_broker.executions_per_cycle,
                 forge_operations_remaining=forge.operations_per_cycle,
+                text_operations_remaining=text_culture.operations_per_cycle,
+                social_operations_remaining=social.operations_per_cycle,
             ),
         )
 
