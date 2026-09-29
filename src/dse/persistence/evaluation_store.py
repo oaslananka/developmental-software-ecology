@@ -50,31 +50,7 @@ class PostgresEvaluationStore:
 
             connection.execute(
                 insert(functional_evaluations).values(
-                    experiment_id=report.experiment_id,
-                    evaluation_id=report.evaluation_id,
-                    condition=report.condition,
-                    world_tick=report.world_tick,
-                    world_sequence=report.world_sequence,
-                    world_snapshot_hash=report.world_snapshot_hash,
-                    culture_snapshot_hash=report.culture_snapshot_hash,
-                    suite_id=report.suite_id,
-                    suite_hash=report.suite_hash,
-                    artifact_bindings=[
-                        binding.model_dump(mode="json")
-                        for binding in report.artifact_bindings
-                    ],
-                    passed_cases=report.passed_cases,
-                    failed_cases=report.failed_cases,
-                    total_cases=report.total_cases,
-                    functional_score=report.functional_score,
-                    duration_ms=report.duration_ms,
-                    policy_hash=report.policy_hash,
-                    attestation_id=report.attestation_id,
-                    backend=report.backend,
-                    backend_version=report.backend_version,
-                    runner_kind=report.runner_kind,
-                    runner_version=report.runner_version,
-                    result_hash=report.result_hash,
+                    **report.model_dump(mode="json")
                 )
             )
 
@@ -141,27 +117,9 @@ class PostgresEvaluationStore:
 
     @staticmethod
     def _report_from_row(row) -> FunctionalEvaluationReport:
-        return FunctionalEvaluationReport(
-            evaluation_id=row["evaluation_id"],
-            experiment_id=row["experiment_id"],
-            condition=row["condition"],
-            world_tick=row["world_tick"],
-            world_sequence=row["world_sequence"],
-            world_snapshot_hash=row["world_snapshot_hash"],
-            culture_snapshot_hash=row["culture_snapshot_hash"],
-            suite_id=row["suite_id"],
-            suite_hash=row["suite_hash"],
-            artifact_bindings=row["artifact_bindings"],
-            passed_cases=row["passed_cases"],
-            failed_cases=row["failed_cases"],
-            total_cases=row["total_cases"],
-            functional_score=row["functional_score"],
-            duration_ms=row["duration_ms"],
-            policy_hash=row["policy_hash"],
-            attestation_id=row["attestation_id"],
-            backend=row["backend"],
-            backend_version=row["backend_version"],
-            runner_kind=row["runner_kind"],
-            runner_version=row["runner_version"],
-            result_hash=row["result_hash"],
+        return FunctionalEvaluationReport.model_validate(
+            {
+                field: row[field]
+                for field in FunctionalEvaluationReport.model_fields
+            }
         )
