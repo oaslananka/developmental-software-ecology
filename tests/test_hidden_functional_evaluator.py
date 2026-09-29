@@ -223,7 +223,10 @@ def test_hidden_evaluation_is_read_only_and_sanitizes_persistable_report() -> No
     assert not hasattr(outcome.report.artifact_bindings[0], "content")
 
     first_public_content = runner.calls[0].snapshot.artifacts[0].content
-    assert first_public_content in request_payload
+    request_dict = runner.calls[0].model_dump(mode="json")
+    report_dict = outcome.report.model_dump(mode="json")
+    assert request_dict["snapshot"]["artifacts"][0]["content"] == first_public_content
+    assert "content" not in report_dict["artifact_bindings"][0]
     assert first_public_content not in report_payload
 
 
