@@ -47,9 +47,11 @@ async def advance_structured_cognition_tick(
 
         if goal_config.enabled:
             context["goal_generation_enabled"] = True
+            context["goal_lifecycle_enabled"] = goal_config.lifecycle_enabled
             context["active_goal"] = _active_goal_context(agent)
         else:
             context["goal_generation_enabled"] = False
+            context["goal_lifecycle_enabled"] = False
 
         if memory_config.enabled:
             query_text = agent.cognition.last_reason_summary or "environment"
@@ -74,19 +76,28 @@ async def advance_structured_cognition_tick(
             agent_id=agent_id,
             world_tick=world.tick,
             context=context,
-            response_schema=(
-                "CognitionDecision/v0.2"
-                if goal_config.enabled
-                else "CognitionDecision/v0.1"
-            ),
+            response_schema=_response_schema(manifest),
         )
         response = await provider.generate(request)
 
         if (
             request.response_schema == "CognitionDecision/v0.1"
-            and response.decision.decision == "propose_goal"
+            and response.decision.decision
+            in {
+                "propose_goal",
+                "update_goal",
+                "complete_goal",
+                "abandon_goal",
+            }
         ):
-            raise ValueError("v0.1 cognition cannot propose goals")
+            raise ValueError("v0.1 cognition cannot emit goal decisions")
+
+        if (
+            request.response_schema == "CognitionDecision/v0.2"
+            and response.decision.decision
+            in {"update_goal", "complete_goal", "abandon_goal"}
+        ):
+            raise ValueError("v0.2 cognition cannot emit goal lifecycle decisions")
 
         events.append(
             _emit(
@@ -123,46 +134,15 @@ async def advance_structured_cognition_tick(
         )
         events.append(cognition_event)
 
-        if goal_config.enabled and response.decision.decision == "propose_goal":
-            proposal = response.decision.goal
-            if proposal is None:
-                raise ValueError("propose_goal response missing goal proposal")
-
-            if agent.goals.active_goal_id is None:
-                events.append(
-                    _emit(
-                        world,
-                        event_type="agent.goal.created",
-                        actor_agent_id=agent_id,
-                        payload={
-                            "goal_id": f"{agent_id}:{cognition_event.event_id}:goal",
-                            "created_tick": world.tick,
-                            "source_event_id": cognition_event.event_id,
-                            "source": "self_generated",
-                            "title": proposal.title,
-                            "description": proposal.description,
-                            "motivation_summary": proposal.motivation_summary,
-                            "expected_value": proposal.expected_value,
-                            "estimated_cost": proposal.estimated_cost,
-                            "confidence": proposal.confidence,
-                            "status": "active",
-                        },
-                    )
+        if goal_config.enabled:
+            events.extend(
+                _emit_goal_events(
+                    world,
+                    agent_id=agent_id,
+                    cognition_event=cognition_event,
+                    decision=response.decision,
                 )
-            else:
-                events.append(
-                    _emit(
-                        world,
-                        event_type="agent.goal.proposal_rejected",
-                        actor_agent_id=agent_id,
-                        payload={
-                            "reason": "active_goal_exists",
-                            "active_goal_id": agent.goals.active_goal_id,
-                            "proposed_title": proposal.title,
-                            "source_event_id": cognition_event.event_id,
-                        },
-                    )
-                )
+            )
 
         if memory_config.enabled:
             memory_event = _emit(
@@ -216,6 +196,135 @@ async def advance_structured_cognition_ticks(
     return events
 
 
+def _response_schema(manifest: ExperimentManifest) -> str:
+    goals = manifest.agents.goals
+    if not goals.enabled:
+        return "CognitionDecision/v0.1"
+    if goals.lifecycle_enabled:
+        return "CognitionDecision/v0.3"
+    return "CognitionDecision/v0.2"
+
+
+def _emit_goal_events(
+    world: WorldState,
+    *,
+    agent_id: str,
+    cognition_event: WorldEvent,
+    decision,
+) -> list[WorldEvent]:
+    agent = world.agents[agent_id]
+    events: list[WorldEvent] = []
+
+    if decision.decision == "propose_goal":
+        proposal = decision.goal
+        if proposal is None:
+            raise ValueError("propose_goal response missing goal proposal")
+
+        if agent.goals.active_goal_id is None:
+            events.append(
+                _emit(
+                    world,
+                    event_type="agent.goal.created",
+                    actor_agent_id=agent_id,
+                    payload={
+                        "goal_id": f"{agent_id}:{cognition_event.event_id}:goal",
+                        "created_tick": world.tick,
+                        "source_event_id": cognition_event.event_id,
+                        "source": "self_generated",
+                        "title": proposal.title,
+                        "description": proposal.description,
+                        "motivation_summary": proposal.motivation_summary,
+                        "expected_value": proposal.expected_value,
+                        "estimated_cost": proposal.estimated_cost,
+                        "confidence": proposal.confidence,
+                        "progress": 0.0,
+                        "last_progress_tick": None,
+                        "last_progress_summary": None,
+                        "completion_tick": None,
+                        "completion_summary": None,
+                        "abandonment_tick": None,
+                        "abandonment_summary": None,
+                        "status": "active",
+                    },
+                )
+            )
+        else:
+            events.append(
+                _emit(
+                    world,
+                    event_type="agent.goal.proposal_rejected",
+                    actor_agent_id=agent_id,
+                    payload={
+                        "reason": "active_goal_exists",
+                        "active_goal_id": agent.goals.active_goal_id,
+                        "proposed_title": proposal.title,
+                        "source_event_id": cognition_event.event_id,
+                    },
+                )
+            )
+
+    elif decision.decision == "update_goal":
+        update = decision.goal_update
+        if update is None:
+            raise ValueError("update_goal response missing goal_update")
+        active_goal = _active_goal(agent)
+        events.append(
+            _emit(
+                world,
+                event_type="agent.goal.progressed",
+                actor_agent_id=agent_id,
+                payload={
+                    "goal_id": active_goal.goal_id,
+                    "old_progress": active_goal.progress,
+                    "new_progress": update.progress,
+                    "progress_summary": update.progress_summary,
+                    "confidence": update.confidence,
+                    "source_event_id": cognition_event.event_id,
+                },
+            )
+        )
+
+    elif decision.decision == "complete_goal":
+        closure = decision.goal_closure
+        if closure is None:
+            raise ValueError("complete_goal response missing goal_closure")
+        active_goal = _active_goal(agent)
+        events.append(
+            _emit(
+                world,
+                event_type="agent.goal.completed",
+                actor_agent_id=agent_id,
+                payload={
+                    "goal_id": active_goal.goal_id,
+                    "summary": closure.summary,
+                    "confidence": closure.confidence,
+                    "source_event_id": cognition_event.event_id,
+                },
+            )
+        )
+
+    elif decision.decision == "abandon_goal":
+        closure = decision.goal_closure
+        if closure is None:
+            raise ValueError("abandon_goal response missing goal_closure")
+        active_goal = _active_goal(agent)
+        events.append(
+            _emit(
+                world,
+                event_type="agent.goal.abandoned",
+                actor_agent_id=agent_id,
+                payload={
+                    "goal_id": active_goal.goal_id,
+                    "summary": closure.summary,
+                    "confidence": closure.confidence,
+                    "source_event_id": cognition_event.event_id,
+                },
+            )
+        )
+
+    return events
+
+
 def _active_goal_context(agent) -> dict[str, object] | None:
     active_goal_id = agent.goals.active_goal_id
     if active_goal_id is None:
@@ -232,8 +341,23 @@ def _active_goal_context(agent) -> dict[str, object] | None:
                 "expected_value": goal.expected_value,
                 "estimated_cost": goal.estimated_cost,
                 "confidence": goal.confidence,
+                "progress": goal.progress,
+                "last_progress_tick": goal.last_progress_tick,
+                "last_progress_summary": goal.last_progress_summary,
                 "status": goal.status.value,
             }
+
+    raise ValueError(f"Active goal not found: {active_goal_id}")
+
+
+def _active_goal(agent):
+    active_goal_id = agent.goals.active_goal_id
+    if active_goal_id is None:
+        raise ValueError("Goal lifecycle decision requires an active goal")
+
+    for goal in agent.goals.goals:
+        if goal.goal_id == active_goal_id:
+            return goal
 
     raise ValueError(f"Active goal not found: {active_goal_id}")
 
