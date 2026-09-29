@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class LifecycleState(StrEnum):
@@ -98,6 +98,16 @@ class ActionIntentRecord(BaseModel):
     estimated_cost: float = Field(ge=0.0, le=1.0)
     draft_content: str | None = Field(default=None, max_length=4000)
     status: ActionStatus = ActionStatus.PROPOSED
+
+    @model_validator(mode="after")
+    def validate_draft_content(self):
+        if self.kind == "draft_artifact" and not self.draft_content:
+            raise ValueError("draft_artifact requires draft_content")
+        if self.kind != "draft_artifact" and self.draft_content is not None:
+            raise ValueError(
+                "draft_content is only allowed for draft_artifact"
+            )
+        return self
 
 
 class ActionState(BaseModel):
