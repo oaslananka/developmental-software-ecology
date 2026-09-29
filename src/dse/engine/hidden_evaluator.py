@@ -247,10 +247,13 @@ async def evaluate_hidden_functional_culture(
         "duration_ms": result.duration_ms,
         "policy_hash": request.policy_hash,
         "attestation_id": request.attestation_id,
+        "attestation_evidence_kind": attestation.evidence_kind,
         "backend": request.backend,
         "backend_version": request.backend_version,
         "runner_kind": result.runner_kind,
         "runner_version": result.runner_version,
+        "worker_build_sha256": result.worker_build_sha256,
+        "runtime_build_sha256": result.runtime_build_sha256,
     }
     report = FunctionalEvaluationReport(
         **report_material,
@@ -292,6 +295,16 @@ def _result_binding_errors(request, result, runner) -> list[str]:
         ("backend_version", request.backend_version, result.backend_version),
         ("runner_kind", runner.runner_kind, result.runner_kind),
         ("runner_version", runner.runner_version, result.runner_version),
+        (
+            "worker_build_sha256",
+            runner.worker_build_sha256,
+            result.worker_build_sha256,
+        ),
+        (
+            "runtime_build_sha256",
+            runner.runtime_build_sha256,
+            result.runtime_build_sha256,
+        ),
     )
     return [
         field

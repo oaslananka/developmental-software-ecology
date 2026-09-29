@@ -78,10 +78,13 @@ functional_evaluations = Table(
     Column("duration_ms", BigInteger, nullable=False),
     Column("policy_hash", Text, nullable=False),
     Column("attestation_id", Text, nullable=False),
+    Column("attestation_evidence_kind", Text, nullable=False),
     Column("backend", Text, nullable=False),
     Column("backend_version", Text, nullable=False),
     Column("runner_kind", Text, nullable=False),
     Column("runner_version", Text, nullable=False),
+    Column("worker_build_sha256", Text, nullable=False),
+    Column("runtime_build_sha256", Text, nullable=False),
     Column("result_hash", Text, nullable=False),
     Column(
         "created_at",

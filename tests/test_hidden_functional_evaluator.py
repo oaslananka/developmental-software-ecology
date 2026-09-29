@@ -42,6 +42,8 @@ P_MANIFEST = Path("experiments/v0_1/conditions/p-personal.yaml")
 class RecordingHiddenEvaluator:
     runner_kind = "test-double"
     runner_version = "m16-acceptance-double-1"
+    worker_build_sha256 = "0" * 64
+    runtime_build_sha256 = "0" * 64
 
     def __init__(
         self,
@@ -76,6 +78,8 @@ class RecordingHiddenEvaluator:
             "backend_version": request.backend_version,
             "runner_kind": self.runner_kind,
             "runner_version": self.runner_version,
+            "worker_build_sha256": self.worker_build_sha256,
+            "runtime_build_sha256": self.runtime_build_sha256,
         }
 
         if self.tamper_field is not None:
@@ -88,6 +92,8 @@ class RecordingHiddenEvaluator:
                     "culture_snapshot_hash",
                     "suite_hash",
                     "policy_hash",
+                    "worker_build_sha256",
+                    "runtime_build_sha256",
                 }
                 else f"{current}-tampered"
             )
@@ -264,6 +270,8 @@ def test_missing_attestation_fails_closed_without_calling_runner() -> None:
         "backend",
         "backend_version",
         "runner_version",
+        "worker_build_sha256",
+        "runtime_build_sha256",
     ],
 )
 def test_tampered_evaluator_binding_is_rejected(tamper_field: str) -> None:
@@ -343,7 +351,12 @@ def test_external_hardened_report_evidence_can_clear_runtime_gate() -> None:
     assert report is not None
 
     hardened = report.model_copy(
-        update={"runner_kind": "external-hardened"}
+        update={
+            "runner_kind": "external-hardened",
+            "attestation_evidence_kind": "runtime-measured",
+            "worker_build_sha256": "1" * 64,
+            "runtime_build_sha256": "2" * 64,
+        }
     )
     hardened = hardened.model_copy(
         update={
@@ -364,7 +377,13 @@ def test_production_evaluator_package_contains_transport_not_execution_backend()
         path.name
         for path in Path("src/dse/evaluator").glob("*.py")
     )
-    assert evaluator_files == ["__init__.py", "base.py", "http.py"]
+    assert evaluator_files == [
+        "__init__.py",
+        "base.py",
+        "http.py",
+        "suite_store.py",
+        "worker.py",
+    ]
 
     source_paths = [
         Path("src/dse/engine/hidden_evaluator.py"),

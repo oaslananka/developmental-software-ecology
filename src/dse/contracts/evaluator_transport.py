@@ -2,6 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from dse.contracts.experiment import SandboxPolicyConfig
 from dse.contracts.sandbox import SandboxAttestation
 
 
@@ -19,6 +20,7 @@ class ExternalEvaluatorHandshakeRequest(StrictModel):
         max_length=64,
         pattern="^[0-9a-f]{64}$",
     )
+    policy: SandboxPolicyConfig
     policy_hash: str = Field(
         min_length=64,
         max_length=64,
@@ -38,4 +40,14 @@ class ExternalEvaluatorHandshakeResponse(StrictModel):
     )
     runner_kind: Literal["external-hardened"]
     runner_version: str = Field(min_length=1, max_length=120)
+    worker_build_sha256: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern="^[0-9a-f]{64}$",
+    )
+    runtime_build_sha256: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern="^[0-9a-f]{64}$",
+    )
     attestation: SandboxAttestation

@@ -53,6 +53,8 @@ def _handshake_response(
         "suite_hash": suite_hash or payload["suite_hash"],
         "runner_kind": "external-hardened",
         "runner_version": "fixture-runner-1",
+        "worker_build_sha256": "1" * 64,
+        "runtime_build_sha256": "2" * 64,
         "attestation": {
             "attestation_id": "m17-fixture-attestation",
             "backend": "external-hardened",
@@ -81,6 +83,8 @@ def _evaluation_response(
         "backend_version": payload["backend_version"],
         "runner_kind": "external-hardened",
         "runner_version": runner_version,
+        "worker_build_sha256": "1" * 64,
+        "runtime_build_sha256": "2" * 64,
         "passed_cases": 1,
         "failed_cases": 0,
         "total_cases": 1,
@@ -148,17 +152,27 @@ def test_handshake_and_evaluation_bind_secret_attestation_and_readiness() -> Non
 
     assert session.runner_kind == "external-hardened"
     assert session.runner_version == "fixture-runner-1"
+    assert session.worker_build_sha256 == "1" * 64
+    assert session.runtime_build_sha256 == "2" * 64
     assert session.service_id == "m17-fixture-service"
     assert outcome.completed is True
     assert outcome.report is not None
     assert outcome.report.runner_kind == "external-hardened"
+    assert outcome.report.worker_build_sha256 == "1" * 64
+    assert outcome.report.runtime_build_sha256 == "2" * 64
+    assert captured_bodies[0]["policy"] == manifest.evaluation.sandbox_policy.model_dump(
+        mode="json"
+    )
 
     readiness = assess_condition_runtime_readiness(
         manifest,
         outcome.report,
     )
-    assert readiness.research_runtime_ready is True
-    assert readiness.missing_surfaces == []
+    assert outcome.report.attestation_evidence_kind == "test-fixture"
+    assert readiness.research_runtime_ready is False
+    assert readiness.missing_surfaces == [
+        "attested_hardened_evaluator_runtime",
+    ]
 
     assert captured_authorization == [
         f"Bearer {TOKEN}",
@@ -299,6 +313,43 @@ def test_session_rejects_runner_version_drift_after_handshake() -> None:
     ):
         asyncio.run(scenario())
 
+
+
+def test_session_rejects_worker_build_drift_after_handshake() -> None:
+    manifest = load_manifest(E_MANIFEST)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        if request.url.path == "/v1/handshake":
+            return httpx.Response(200, json=_handshake_response(payload))
+
+        response = _evaluation_response(payload)
+        response["worker_build_sha256"] = "3" * 64
+        return httpx.Response(200, json=response)
+
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as http_client:
+            client = ExternalEvaluatorClient(
+                base_url="https://evaluator.example",
+                bearer_token=TOKEN,
+                client=http_client,
+            )
+            session = await client.open_session(manifest)
+            world = create_world(manifest)
+            await evaluate_hidden_functional_culture(
+                world,
+                manifest,
+                attestation=session.attestation,
+                runner=session,
+            )
+
+    with pytest.raises(
+        ExternalEvaluatorProtocolError,
+        match="worker build changed",
+    ):
+        asyncio.run(scenario())
 
 def test_session_refuses_evaluation_request_from_another_attestation() -> None:
     manifest = load_manifest(E_MANIFEST)

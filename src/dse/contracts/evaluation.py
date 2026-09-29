@@ -116,6 +116,16 @@ class HiddenEvaluationRunnerResult(StrictModel):
     backend_version: str = Field(min_length=1, max_length=120)
     runner_kind: Literal["test-double", "external-hardened"]
     runner_version: str = Field(min_length=1, max_length=120)
+    worker_build_sha256: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern="^[0-9a-f]{64}$",
+    )
+    runtime_build_sha256: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern="^[0-9a-f]{64}$",
+    )
     passed_cases: int = Field(ge=0)
     failed_cases: int = Field(ge=0)
     total_cases: int = Field(ge=1)
@@ -142,10 +152,24 @@ class FunctionalEvaluationReport(HiddenEvaluationPlan):
         pattern="^[0-9a-f]{64}$",
     )
     attestation_id: str = Field(min_length=1, max_length=160)
+    attestation_evidence_kind: Literal[
+        "test-fixture",
+        "runtime-measured",
+    ]
     backend: str = Field(min_length=1, max_length=64)
     backend_version: str = Field(min_length=1, max_length=120)
     runner_kind: Literal["test-double", "external-hardened"]
     runner_version: str = Field(min_length=1, max_length=120)
+    worker_build_sha256: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern="^[0-9a-f]{64}$",
+    )
+    runtime_build_sha256: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern="^[0-9a-f]{64}$",
+    )
     result_hash: str = Field(
         min_length=64,
         max_length=64,
