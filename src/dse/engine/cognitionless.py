@@ -49,6 +49,8 @@ def advance_cognitionless_tick(
                         "action_proposals": actions.proposals_per_cycle,
                         "tool_executions": tool_broker.executions_per_cycle,
                         "forge_operations": forge.operations_per_cycle,
+                        "text_operations": text_culture.operations_per_cycle,
+                        "social_operations": social.operations_per_cycle,
                         "cycles_completed_delta": 0,
                     },
                 )
