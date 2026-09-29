@@ -55,6 +55,10 @@ class ActionConfig(StrictModel):
 class ToolBrokerConfig(StrictModel):
     enabled: bool = False
     executions_per_cycle: int = Field(default=0, ge=0)
+    executor: Literal[
+        "deterministic-fake",
+        "ephemeral-local-workspace",
+    ] = "deterministic-fake"
 
 
 class MemoryConfig(StrictModel):

@@ -120,11 +120,14 @@ class ToolExecutionRecord(BaseModel):
     execution_id: str = Field(min_length=1)
     action_id: str = Field(min_length=1)
     created_tick: int = Field(ge=0)
-    executor: str = Field(pattern="^deterministic-fake$")
+    executor: str = Field(
+        pattern="^(deterministic-fake|ephemeral-local-workspace)$"
+    )
     success: bool
     result_type: str = Field(
         pattern=(
-            "^(workspace_inspection|artifact_draft_preview|validation_report)$"
+            "^(workspace_inspection|artifact_draft_preview|"
+            "artifact_written|validation_report)$"
         )
     )
     summary: str = Field(min_length=1, max_length=320)

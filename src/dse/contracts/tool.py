@@ -8,11 +8,15 @@ class StrictModel(BaseModel):
 
 
 class ToolExecutionResult(StrictModel):
-    executor: Literal["deterministic-fake"] = "deterministic-fake"
+    executor: Literal[
+        "deterministic-fake",
+        "ephemeral-local-workspace",
+    ]
     success: bool
     result_type: Literal[
         "workspace_inspection",
         "artifact_draft_preview",
+        "artifact_written",
         "validation_report",
     ]
     summary: str = Field(min_length=1, max_length=320)
