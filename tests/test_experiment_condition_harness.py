@@ -135,6 +135,29 @@ def test_condition_contract_rejects_treatment_drift() -> None:
         ExperimentManifest.model_validate(raw)
 
 
+def test_evaluation_profile_roundtrips_canonical_manifest() -> None:
+    manifest = load_manifest(CONDITION_PATHS["T"])
+
+    restored = ExperimentManifest.model_validate(
+        manifest.model_dump(mode="json")
+    )
+
+    assert restored == manifest
+    assert restored.evaluation_profile == "v0_1-hidden-functional-suite"
+
+
+def test_evaluation_profile_rejects_expanded_config_drift() -> None:
+    manifest = load_manifest(CONDITION_PATHS["E"])
+    raw = manifest.model_dump(mode="json")
+    raw["evaluation"]["sandbox_policy"]["memory_mb"] = 512
+
+    with pytest.raises(
+        ValidationError,
+        match="evaluation does not match evaluation_profile",
+    ):
+        ExperimentManifest.model_validate(raw)
+
+
 def test_ril_requires_explicit_isolated_topology() -> None:
     raw = yaml.safe_load(
         CONDITION_PATHS["RIL"].read_text(encoding="utf-8")
