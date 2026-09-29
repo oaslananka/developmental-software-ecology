@@ -30,7 +30,7 @@ class EvaluationArtifactInput(EvaluationArtifactBinding):
     content: str = Field(max_length=65_536)
 
 
-class CultureEvaluationSnapshot(StrictModel):
+class EvaluationWorldBinding(StrictModel):
     experiment_id: str = Field(min_length=1)
     condition: Literal["P", "T", "E", "ES", "RIL"]
     world_tick: int = Field(ge=0)
@@ -45,28 +45,17 @@ class CultureEvaluationSnapshot(StrictModel):
         max_length=64,
         pattern="^[0-9a-f]{64}$",
     )
+
+
+class CultureEvaluationSnapshot(EvaluationWorldBinding):
     artifacts: list[EvaluationArtifactInput] = Field(
         default_factory=list,
         max_length=4096,
     )
 
 
-class HiddenEvaluationPlan(StrictModel):
+class HiddenEvaluationPlan(EvaluationWorldBinding):
     evaluation_id: str = Field(min_length=1, max_length=240)
-    experiment_id: str = Field(min_length=1)
-    condition: Literal["P", "T", "E", "ES", "RIL"]
-    world_tick: int = Field(ge=0)
-    world_sequence: int = Field(ge=0)
-    world_snapshot_hash: str = Field(
-        min_length=64,
-        max_length=64,
-        pattern="^[0-9a-f]{64}$",
-    )
-    culture_snapshot_hash: str = Field(
-        min_length=64,
-        max_length=64,
-        pattern="^[0-9a-f]{64}$",
-    )
     suite_id: str = Field(min_length=1, max_length=160)
     suite_hash: str = Field(
         min_length=64,
@@ -141,32 +130,7 @@ class HiddenEvaluationRunnerResult(StrictModel):
         return self
 
 
-class FunctionalEvaluationReport(StrictModel):
-    evaluation_id: str = Field(min_length=1, max_length=240)
-    experiment_id: str = Field(min_length=1)
-    condition: Literal["P", "T", "E", "ES", "RIL"]
-    world_tick: int = Field(ge=0)
-    world_sequence: int = Field(ge=0)
-    world_snapshot_hash: str = Field(
-        min_length=64,
-        max_length=64,
-        pattern="^[0-9a-f]{64}$",
-    )
-    culture_snapshot_hash: str = Field(
-        min_length=64,
-        max_length=64,
-        pattern="^[0-9a-f]{64}$",
-    )
-    suite_id: str = Field(min_length=1, max_length=160)
-    suite_hash: str = Field(
-        min_length=64,
-        max_length=64,
-        pattern="^[0-9a-f]{64}$",
-    )
-    artifact_bindings: list[EvaluationArtifactBinding] = Field(
-        default_factory=list,
-        max_length=4096,
-    )
+class FunctionalEvaluationReport(HiddenEvaluationPlan):
     passed_cases: int = Field(ge=0)
     failed_cases: int = Field(ge=0)
     total_cases: int = Field(ge=1)
