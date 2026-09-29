@@ -260,6 +260,7 @@ def _forge_v05_decision(
     forge_results = list(context.get("forge_results") or [])
     repositories = list((context.get("forge_world") or {}).get("repositories") or [])
     progress = float(active_goal.get("progress", 0.0))
+    generation = int(context.get("generation", 0) or 0)
 
     if action_generation_enabled and forge_enabled and action_budget > 0:
         if not forge_results and forge_budget > 0:
@@ -273,7 +274,11 @@ def _forge_v05_decision(
                 action=ActionProposal(
                     kind="forge_create_repository",
                     summary="Create a public cultural repository.",
-                    target=f"culture-{request.agent_id}",
+                    target=(
+                        f"culture-{request.agent_id}"
+                        if generation == 0
+                        else f"culture-{request.agent_id}-g{generation}"
+                    ),
                     rationale=(
                         "A durable shared repository creates a substrate that can outlive "
                         "private agent memory."
@@ -332,6 +337,23 @@ def _forge_v05_decision(
                 if repo.get("repo_id") != own_repo_id
                 and int(repo.get("artifact_count", 0)) > 0
             ]
+            if generation > 0:
+                same_slot_older = [
+                    repo
+                    for repo in candidates
+                    if repo.get("creator_agent_id") == request.agent_id
+                    and int(repo.get("creator_generation", 0)) < generation
+                ]
+                older_generation = [
+                    repo
+                    for repo in candidates
+                    if int(repo.get("creator_generation", 0)) < generation
+                ]
+                candidates = (
+                    same_slot_older
+                    or older_generation
+                    or candidates
+                )
             if not candidates:
                 candidates = [
                     repo

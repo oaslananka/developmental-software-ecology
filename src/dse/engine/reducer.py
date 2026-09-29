@@ -1,11 +1,16 @@
 from dse.contracts.agent import (
     ActionIntentRecord,
+    ActionState,
     ActionStatus,
+    CognitionState,
     EpisodicMemory,
     ForgeActionResultRecord,
     GoalRecord,
+    GoalState,
     GoalStatus,
     LifecycleState,
+    MemoryState,
+    ResourceState,
     ToolExecutionRecord,
 )
 from dse.contracts.event import WorldEvent
@@ -14,6 +19,7 @@ from dse.contracts.forge import (
     ForgeCommitRecord,
     ForgeRepositoryRecord,
 )
+from dse.engine.hashing import state_hash
 from dse.engine.world import WorldState
 
 
@@ -40,6 +46,70 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
                     f"received {event.world_tick}"
                 )
             world.tick = event.world_tick
+
+        case "agent.lifecycle.turned_over":
+            agent = _agent_for_event(world, event)
+            previous_generation = int(event.payload["previous_generation"])
+            next_generation = int(event.payload["next_generation"])
+            if agent.generation != previous_generation:
+                raise ValueError("Turnover previous_generation mismatch")
+            if next_generation != previous_generation + 1:
+                raise ValueError("Turnover must increment generation exactly once")
+            if agent.lifecycle_state in {
+                LifecycleState.TURNED_OVER,
+                LifecycleState.TERMINATED,
+            }:
+                raise ValueError("Agent cannot be turned over from terminal state")
+
+            expected_counts = {
+                "cognition_calls": agent.cognition.calls_completed,
+                "goals": len(agent.goals.goals),
+                "actions": len(agent.actions.proposals),
+                "tool_executions": len(agent.actions.executions),
+                "forge_results": len(agent.actions.forge_results),
+                "episodic_memories": len(agent.memory.episodes),
+            }
+            if event.payload["private_state_counts"] != expected_counts:
+                raise ValueError("Turnover private-state counts mismatch")
+
+            forge_hash = state_hash(world.forge.model_dump(mode="json"))
+            if event.payload["public_forge_hash"] != forge_hash:
+                raise ValueError("Turnover public Forge hash mismatch")
+
+            agent.lifecycle_state = LifecycleState.TURNED_OVER
+            agent.state_version += 1
+
+        case "agent.lifecycle.replaced":
+            agent = _agent_for_event(world, event)
+            previous_generation = int(event.payload["previous_generation"])
+            new_generation = int(event.payload["new_generation"])
+            birth_tick = int(event.payload["birth_tick"])
+
+            if agent.lifecycle_state != LifecycleState.TURNED_OVER:
+                raise ValueError("Replacement requires turned_over lifecycle state")
+            if agent.generation != previous_generation:
+                raise ValueError("Replacement previous_generation mismatch")
+            if new_generation != previous_generation + 1:
+                raise ValueError("Replacement generation must increment exactly once")
+            if birth_tick != event.world_tick:
+                raise ValueError("Replacement birth_tick must equal event world_tick")
+            if event.payload.get("traits_preserved") is not True:
+                raise ValueError("M13 replacements must preserve initial traits")
+
+            forge_hash = state_hash(world.forge.model_dump(mode="json"))
+            if event.payload["public_forge_hash"] != forge_hash:
+                raise ValueError("Replacement public Forge hash mismatch")
+
+            agent.generation = new_generation
+            agent.birth_tick = birth_tick
+            agent.lifecycle_state = LifecycleState.BORN
+            agent.resources = ResourceState(activity_units_remaining=0)
+            agent.cognition = CognitionState()
+            agent.goals = GoalState()
+            agent.actions = ActionState()
+            agent.memory = MemoryState()
+            agent.last_active_tick = birth_tick
+            agent.state_version = 0
 
         case "agent.lifecycle.wake":
             agent = _agent_for_event(world, event)

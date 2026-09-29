@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class StrictModel(BaseModel):
@@ -33,6 +33,35 @@ class TraitConfig(StrictModel):
 class LifecycleConfig(StrictModel):
     active_ticks_per_cycle: int = Field(default=960, gt=0)
     sleep_ticks_per_cycle: int = Field(default=480, gt=0)
+
+
+class TurnoverConfig(StrictModel):
+    enabled: bool = False
+    ticks: list[int] = Field(default_factory=list, max_length=128)
+    agent_ids: list[str] = Field(default_factory=list, max_length=256)
+
+    @model_validator(mode="after")
+    def validate_schedule(self):
+        if len(self.ticks) != len(set(self.ticks)):
+            raise ValueError("turnover ticks must be unique")
+        if any(tick <= 0 for tick in self.ticks):
+            raise ValueError("turnover ticks must be positive")
+        if self.ticks != sorted(self.ticks):
+            raise ValueError("turnover ticks must be sorted")
+        if len(self.agent_ids) != len(set(self.agent_ids)):
+            raise ValueError("turnover agent_ids must be unique")
+        if any(
+            not agent_id.startswith("agent-")
+            or len(agent_id) != 10
+            or not agent_id[6:].isdigit()
+            for agent_id in self.agent_ids
+        ):
+            raise ValueError("turnover agent_ids must match agent-XXXX")
+        if self.enabled and (not self.ticks or not self.agent_ids):
+            raise ValueError(
+                "enabled turnover requires non-empty ticks and agent_ids"
+            )
+        return self
 
 
 class CognitionConfig(StrictModel):
@@ -117,6 +146,7 @@ class ModelProviderConfig(StrictModel):
 class AgentConfig(StrictModel):
     initial_traits: TraitConfig
     lifecycle: LifecycleConfig = Field(default_factory=LifecycleConfig)
+    turnover: TurnoverConfig = Field(default_factory=TurnoverConfig)
     cognition: CognitionConfig = Field(default_factory=CognitionConfig)
     goals: GoalConfig = Field(default_factory=GoalConfig)
     actions: ActionConfig = Field(default_factory=ActionConfig)
