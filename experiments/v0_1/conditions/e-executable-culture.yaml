@@ -71,6 +71,22 @@ runtime:
   forge_enabled: true
   sandbox_enabled: false
   web_enabled: false
+  text_culture:
+    enabled: false
+    operations_per_cycle: 4
+    max_entries: 512
+    max_entry_bytes: 4096
+    context_entry_limit: 16
+    context_content_chars: 1024
+  social:
+    enabled: false
+    mode: "none"
+    operations_per_cycle: 4
+    max_messages: 1024
+    max_threads: 256
+    max_message_bytes: 2048
+    context_message_limit: 16
+    context_content_chars: 512
   forge:
     enabled: true
     provider: "deterministic-memory"
