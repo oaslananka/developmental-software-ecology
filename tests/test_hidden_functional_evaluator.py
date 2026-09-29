@@ -359,16 +359,21 @@ def test_external_hardened_report_evidence_can_clear_runtime_gate() -> None:
     assert readiness.missing_surfaces == []
 
 
-def test_production_evaluator_package_contains_protocol_not_execution_backend() -> None:
+def test_production_evaluator_package_contains_transport_not_execution_backend() -> None:
     evaluator_files = sorted(
         path.name
         for path in Path("src/dse/evaluator").glob("*.py")
     )
-    assert evaluator_files == ["__init__.py", "base.py"]
+    assert evaluator_files == ["__init__.py", "base.py", "http.py"]
 
-    source = Path("src/dse/engine/hidden_evaluator.py").read_text(
-        encoding="utf-8"
-    ).lower()
+    source_paths = [
+        Path("src/dse/engine/hidden_evaluator.py"),
+        *Path("src/dse/evaluator").glob("*.py"),
+    ]
+    source = "\n".join(
+        path.read_text(encoding="utf-8").lower()
+        for path in source_paths
+    )
     forbidden = (
         "import subprocess",
         "from subprocess",
