@@ -2,6 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from dse.contracts.experiment import SandboxPolicyConfig
 from dse.contracts.sandbox import SandboxAdmissionDecision, SandboxExecutionPlan
 
 
@@ -18,6 +19,7 @@ class SandboxRunRequest(StrictModel):
         max_length=64,
         pattern="^[0-9a-f]{64}$",
     )
+    policy: SandboxPolicyConfig
     policy_hash: str = Field(
         min_length=64,
         max_length=64,
