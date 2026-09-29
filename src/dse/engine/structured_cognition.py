@@ -483,6 +483,9 @@ def _emit_action_events(
                 "expected_value": proposal.expected_value,
                 "estimated_cost": proposal.estimated_cost,
                 "draft_content": proposal.draft_content,
+                "repo_id": proposal.repo_id,
+                "parent_artifact_ids": list(proposal.parent_artifact_ids),
+                "expected_parent_commit_id": proposal.expected_parent_commit_id,
                 "status": "proposed",
             },
         )
