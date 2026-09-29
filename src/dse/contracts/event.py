@@ -28,17 +28,36 @@ def deterministic_event_id(experiment_id: str, sequence_number: int) -> str:
     return str(uuid.uuid5(EVENT_NAMESPACE, f"{experiment_id}:{sequence_number}"))
 
 
-def make_tick_event(
+def make_event(
     *,
     experiment_id: str,
     sequence_number: int,
     world_tick: int,
+    event_type: str,
+    actor_agent_id: str | None = None,
+    payload: dict[str, Any] | None = None,
 ) -> WorldEvent:
     return WorldEvent(
         event_id=deterministic_event_id(experiment_id, sequence_number),
         experiment_id=experiment_id,
         sequence_number=sequence_number,
         world_tick=world_tick,
-        event_type="world.tick.advanced",
+        event_type=event_type,
+        actor_agent_id=actor_agent_id,
+        payload=payload or {},
         created_at_wall_clock=datetime.now(UTC),
+    )
+
+
+def make_tick_event(
+    *,
+    experiment_id: str,
+    sequence_number: int,
+    world_tick: int,
+) -> WorldEvent:
+    return make_event(
+        experiment_id=experiment_id,
+        sequence_number=sequence_number,
+        world_tick=world_tick,
+        event_type="world.tick.advanced",
     )
