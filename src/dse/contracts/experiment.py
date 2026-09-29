@@ -114,6 +114,26 @@ class ToolBrokerConfig(StrictModel):
     ] = "deterministic-fake"
 
 
+class TextCultureConfig(StrictModel):
+    enabled: bool = False
+    operations_per_cycle: int = Field(default=4, ge=0, le=64)
+    max_entries: int = Field(default=512, ge=1, le=4096)
+    max_entry_bytes: int = Field(default=4096, ge=256, le=65_536)
+    context_entry_limit: int = Field(default=16, ge=1, le=64)
+    context_content_chars: int = Field(default=1024, ge=0, le=8192)
+
+
+class SocialConfig(StrictModel):
+    enabled: bool = False
+    mode: Literal["none", "direct", "issues_pr_messages"] = "none"
+    operations_per_cycle: int = Field(default=4, ge=0, le=64)
+    max_messages: int = Field(default=1024, ge=1, le=8192)
+    max_threads: int = Field(default=256, ge=1, le=2048)
+    max_message_bytes: int = Field(default=2048, ge=128, le=32_768)
+    context_message_limit: int = Field(default=16, ge=1, le=64)
+    context_content_chars: int = Field(default=512, ge=0, le=4096)
+
+
 class ForgeConfig(StrictModel):
     enabled: bool = False
     provider: Literal["deterministic-memory"] = "deterministic-memory"
@@ -184,6 +204,8 @@ class RuntimeConfig(StrictModel):
     forge_enabled: bool = False
     sandbox_enabled: bool = False
     web_enabled: bool = False
+    text_culture: TextCultureConfig = Field(default_factory=TextCultureConfig)
+    social: SocialConfig = Field(default_factory=SocialConfig)
     forge: ForgeConfig = Field(default_factory=ForgeConfig)
     sandbox_policy: SandboxPolicyConfig = Field(
         default_factory=SandboxPolicyConfig

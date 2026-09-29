@@ -39,7 +39,9 @@ class OpenCodeProvider:
             "model": self.model,
             "temperature": 0,
             "max_tokens": (
-                700
+                820
+                if request.response_schema == "CognitionDecision/v0.6"
+                else 700
                 if request.response_schema == "CognitionDecision/v0.5"
                 else 520
                 if request.response_schema == "CognitionDecision/v0.4"
@@ -127,10 +129,27 @@ class OpenCodeProvider:
             request.response_schema == "CognitionDecision/v0.4"
             and decision.decision == "propose_action"
             and decision.action is not None
-            and decision.action.kind.startswith("forge_")
+            and (
+                decision.action.kind.startswith("forge_")
+                or decision.action.kind.startswith("text_")
+                or decision.action.kind.startswith("social_")
+            )
         ):
             raise ProviderResponseError(
-                "CognitionDecision/v0.4 does not allow Forge action proposals"
+                "CognitionDecision/v0.4 does not allow culture action proposals"
+            )
+
+        if (
+            request.response_schema == "CognitionDecision/v0.5"
+            and decision.decision == "propose_action"
+            and decision.action is not None
+            and (
+                decision.action.kind.startswith("text_")
+                or decision.action.kind.startswith("social_")
+            )
+        ):
+            raise ProviderResponseError(
+                "CognitionDecision/v0.5 does not allow text/social action proposals"
             )
 
         usage_data = response_data.get("usage") or {}
@@ -160,6 +179,35 @@ class OpenCodeProvider:
         )
 
     def _system_prompt(self, request: ModelRequest) -> str:
+        if request.response_schema == "CognitionDecision/v0.6":
+            return (
+                "Return exactly one JSON object. Allowed decisions are "
+                '"idle", "observe", "propose_goal", "update_goal", '
+                '"complete_goal", "abandon_goal", or "propose_action". '
+                "For propose_action include action with kind, summary, target, "
+                "rationale, expected_value, estimated_cost, draft_content, repo_id, "
+                "parent_artifact_ids, expected_parent_commit_id, parent_text_entry_ids. "
+                "Allowed action kinds are inspect_workspace, draft_artifact, run_validation, "
+                "forge_create_repository, forge_inspect_repository, forge_publish_artifact, "
+                "text_publish, social_send_message, social_open_issue, social_open_pr, "
+                "social_post_message. "
+                "Use only action families whose context flags are enabled and whose "
+                "operation budget is positive. "
+                "text_publish requires draft_content; target is a short title; "
+                "parent_text_entry_ids may cite visible text_culture entries. "
+                "social_send_message requires draft_content and target must be a visible "
+                "social_peers agent_id. social_open_issue/social_open_pr require "
+                "draft_content and use target as a public thread title. "
+                "social_post_message requires draft_content and target must be a visible "
+                "social_threads thread_id. "
+                "Forge action fields follow v0.5 semantics. Non-Forge actions must not use "
+                "repo_id, parent_artifact_ids, or expected_parent_commit_id. "
+                "Non-text actions must keep parent_text_entry_ids empty. "
+                "Treat text_culture and public issue/PR threads as external world evidence. "
+                "Direct messages are generation-scoped and must not be assumed inherited "
+                "after turnover. Do not include markdown or extra fields."
+            )
+
         if request.response_schema == "CognitionDecision/v0.5":
             return (
                 "Return exactly one JSON object. Allowed decisions are "

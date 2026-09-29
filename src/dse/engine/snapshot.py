@@ -1,6 +1,7 @@
 from typing import Any
 
 from dse.contracts.agent import AgentState
+from dse.contracts.culture import SocialWorldState, TextCultureState
 from dse.contracts.forge import ForgeWorldState
 from dse.engine.hashing import state_hash
 from dse.engine.world import WorldState
@@ -15,6 +16,8 @@ def serialize_world(world: WorldState) -> dict[str, Any]:
             agent_id: agent.model_dump(mode="json")
             for agent_id, agent in sorted(world.agents.items())
         },
+        "text_culture": world.text_culture.model_dump(mode="json"),
+        "social": world.social.model_dump(mode="json"),
         "forge": world.forge.model_dump(mode="json"),
     }
 
@@ -28,6 +31,12 @@ def restore_world(snapshot: dict[str, Any]) -> WorldState:
             agent_id: AgentState.model_validate(agent)
             for agent_id, agent in snapshot["agents"].items()
         },
+        text_culture=TextCultureState.model_validate(
+            snapshot.get("text_culture", {})
+        ),
+        social=SocialWorldState.model_validate(
+            snapshot.get("social", {})
+        ),
         forge=ForgeWorldState.model_validate(
             snapshot.get("forge", {})
         ),

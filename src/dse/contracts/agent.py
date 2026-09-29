@@ -43,6 +43,8 @@ class ResourceState(BaseModel):
     action_proposals_remaining: int = Field(default=0, ge=0)
     tool_executions_remaining: int = Field(default=0, ge=0)
     forge_operations_remaining: int = Field(default=0, ge=0)
+    text_operations_remaining: int = Field(default=0, ge=0)
+    social_operations_remaining: int = Field(default=0, ge=0)
     cycles_completed: int = Field(default=0, ge=0)
 
 
@@ -97,7 +99,8 @@ class ActionIntentRecord(BaseModel):
         pattern=(
             "^(inspect_workspace|draft_artifact|run_validation|"
             "forge_create_repository|forge_inspect_repository|"
-            "forge_publish_artifact)$"
+            "forge_publish_artifact|text_publish|social_send_message|"
+            "social_open_issue|social_open_pr|social_post_message)$"
         )
     )
     summary: str = Field(min_length=1, max_length=240)
@@ -109,17 +112,28 @@ class ActionIntentRecord(BaseModel):
     repo_id: str | None = Field(default=None, max_length=96)
     parent_artifact_ids: list[str] = Field(default_factory=list, max_length=64)
     expected_parent_commit_id: str | None = Field(default=None, max_length=96)
+    parent_text_entry_ids: list[str] = Field(default_factory=list, max_length=64)
     status: ActionStatus = ActionStatus.PROPOSED
 
     @model_validator(mode="after")
     def validate_action_shape(self):
         forge_publish = self.kind == "forge_publish_artifact"
-        if self.kind in {"draft_artifact", "forge_publish_artifact"}:
+        text_publish = self.kind == "text_publish"
+        content_kinds = {
+            "draft_artifact",
+            "forge_publish_artifact",
+            "text_publish",
+            "social_send_message",
+            "social_open_issue",
+            "social_open_pr",
+            "social_post_message",
+        }
+        if self.kind in content_kinds:
             if not self.draft_content:
                 raise ValueError(f"{self.kind} requires draft_content")
         elif self.draft_content is not None:
             raise ValueError(
-                "draft_content is only allowed for artifact draft/publish actions"
+                "draft_content is only allowed for content-bearing actions"
             )
 
         if forge_publish:
@@ -135,6 +149,10 @@ class ActionIntentRecord(BaseModel):
         if self.expected_parent_commit_id is not None and not forge_publish:
             raise ValueError(
                 "expected_parent_commit_id is only allowed for forge_publish_artifact"
+            )
+        if self.parent_text_entry_ids and not text_publish:
+            raise ValueError(
+                "parent_text_entry_ids are only allowed for text_publish"
             )
         return self
 
@@ -177,12 +195,30 @@ class ForgeActionResultRecord(BaseModel):
     result_hash: str = Field(min_length=64, max_length=64)
 
 
+class CultureActionResultRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_id: str = Field(min_length=1)
+    action_id: str = Field(min_length=1)
+    created_tick: int = Field(ge=0)
+    operation: str = Field(
+        pattern=(
+            "^(publish_text|send_message|open_issue|open_pr|post_message)$"
+        )
+    )
+    status: str = Field(pattern="^(completed|rejected)$")
+    reason: str = Field(min_length=1, max_length=120)
+    result_data: dict[str, Any] = Field(default_factory=dict)
+    result_hash: str = Field(min_length=64, max_length=64)
+
+
 class ActionState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     proposals: list[ActionIntentRecord] = Field(default_factory=list)
     executions: list[ToolExecutionRecord] = Field(default_factory=list)
     forge_results: list[ForgeActionResultRecord] = Field(default_factory=list)
+    culture_results: list[CultureActionResultRecord] = Field(default_factory=list)
 
 
 class EpisodicMemory(BaseModel):

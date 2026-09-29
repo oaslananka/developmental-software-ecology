@@ -88,6 +88,8 @@ def test_all_primary_condition_manifests_share_compute_budget() -> None:
         assert manifest.agents.actions.proposals_per_cycle == 4
         assert manifest.agents.memory.capacity == 32
         assert manifest.runtime.forge.operations_per_cycle == 4
+        assert manifest.runtime.text_culture.operations_per_cycle == 4
+        assert manifest.runtime.social.operations_per_cycle == 4
 
 
 def test_condition_contract_rejects_treatment_drift() -> None:
@@ -110,6 +112,17 @@ def test_condition_contract_rejects_treatment_drift() -> None:
     with pytest.raises(
         ValidationError,
         match="runtime.forge_enabled",
+    ):
+        ExperimentManifest.model_validate(raw)
+
+    raw = yaml.safe_load(
+        CONDITION_PATHS["T"].read_text(encoding="utf-8")
+    )
+    raw["runtime"]["social"]["enabled"] = False
+
+    with pytest.raises(
+        ValidationError,
+        match="runtime.social.enabled",
     ):
         ExperimentManifest.model_validate(raw)
 
@@ -151,11 +164,8 @@ def test_support_gate_reports_missing_runtime_surfaces_without_theater() -> None
     assert reports["RIL"].research_runtime_ready is True
     assert reports["RIL"].missing_surfaces == []
 
-    assert reports["T"].research_runtime_ready is False
-    assert reports["T"].missing_surfaces == [
-        "direct_social_channel_runtime",
-        "persistent_text_culture_runtime",
-    ]
+    assert reports["T"].research_runtime_ready is True
+    assert reports["T"].missing_surfaces == []
 
     assert reports["E"].research_runtime_ready is False
     assert reports["E"].missing_surfaces == [
@@ -167,8 +177,6 @@ def test_support_gate_reports_missing_runtime_surfaces_without_theater() -> None
     assert reports["ES"].missing_surfaces == [
         "hardened_artifact_execution_runtime",
         "hidden_functional_evaluator",
-        "issues_pr_messages_runtime",
-        "persistent_text_culture_runtime",
     ]
 
 
@@ -188,7 +196,7 @@ def test_harness_reports_full_matrix_but_does_not_claim_false_readiness() -> Non
     assert support["RIL"].research_runtime_ready is True
     assert support["E"].research_runtime_ready is False
     assert support["ES"].research_runtime_ready is False
-    assert support["T"].research_runtime_ready is False
+    assert support["T"].research_runtime_ready is True
 
 
 def test_compute_budget_drift_is_rejected_even_if_treatment_is_valid() -> None:

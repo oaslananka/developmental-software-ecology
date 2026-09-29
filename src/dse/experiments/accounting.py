@@ -30,6 +30,13 @@ class ComputeBudgetFingerprint(StrictModel):
     memory_capacity: int
     memory_retrieval_limit: int
     forge_operations_per_cycle: int
+    text_operations_per_cycle: int
+    social_operations_per_cycle: int
+    text_max_entries: int
+    text_max_entry_bytes: int
+    social_max_messages: int
+    social_max_threads: int
+    social_max_message_bytes: int
     max_artifact_bytes: int
     max_repositories: int
     max_artifacts_per_repository: int
@@ -51,6 +58,11 @@ class ComputeUsage(StrictModel):
     action_proposals: int = Field(ge=0)
     tool_executions: int = Field(ge=0)
     forge_operations: int = Field(ge=0)
+    text_operations: int = Field(ge=0)
+    social_operations: int = Field(ge=0)
+    text_entries_published: int = Field(ge=0)
+    social_messages_created: int = Field(ge=0)
+    social_threads_created: int = Field(ge=0)
     turnovers: int = Field(ge=0)
     repositories_created: int = Field(ge=0)
     artifacts_committed: int = Field(ge=0)
@@ -90,6 +102,15 @@ def compute_budget_fingerprint(
         memory_capacity=manifest.agents.memory.capacity,
         memory_retrieval_limit=manifest.agents.memory.retrieval_limit,
         forge_operations_per_cycle=manifest.runtime.forge.operations_per_cycle,
+        text_operations_per_cycle=(
+            manifest.runtime.text_culture.operations_per_cycle
+        ),
+        social_operations_per_cycle=manifest.runtime.social.operations_per_cycle,
+        text_max_entries=manifest.runtime.text_culture.max_entries,
+        text_max_entry_bytes=manifest.runtime.text_culture.max_entry_bytes,
+        social_max_messages=manifest.runtime.social.max_messages,
+        social_max_threads=manifest.runtime.social.max_threads,
+        social_max_message_bytes=manifest.runtime.social.max_message_bytes,
         max_artifact_bytes=manifest.runtime.forge.max_artifact_bytes,
         max_repositories=manifest.runtime.forge.max_repositories,
         max_artifacts_per_repository=(
@@ -173,6 +194,15 @@ def compute_usage(events: Iterable[WorldEvent]) -> ComputeUsage:
         action_proposals=counts["resource.action_proposal.consumed"],
         tool_executions=counts["resource.tool_execution.consumed"],
         forge_operations=counts["resource.forge_operation.consumed"],
+        text_operations=counts["resource.text_operation.consumed"],
+        social_operations=counts["resource.social_operation.consumed"],
+        text_entries_published=counts["culture.text.published"],
+        social_messages_created=(
+            counts["social.message.sent"]
+            + counts["social.thread.opened"]
+            + counts["social.thread.message_posted"]
+        ),
+        social_threads_created=counts["social.thread.opened"],
         turnovers=counts["agent.lifecycle.turned_over"],
         repositories_created=counts["forge.repository.created"],
         artifacts_committed=counts["forge.artifact.committed"],

@@ -3,6 +3,7 @@ from dse.contracts.agent import (
     ActionState,
     ActionStatus,
     CognitionState,
+    CultureActionResultRecord,
     EpisodicMemory,
     ForgeActionResultRecord,
     GoalRecord,
@@ -12,6 +13,11 @@ from dse.contracts.agent import (
     MemoryState,
     ResourceState,
     ToolExecutionRecord,
+)
+from dse.contracts.culture import (
+    SocialMessageRecord,
+    SocialThreadRecord,
+    TextEntryRecord,
 )
 from dse.contracts.event import WorldEvent
 from dse.contracts.forge import (
@@ -67,6 +73,7 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
                 "actions": len(agent.actions.proposals),
                 "tool_executions": len(agent.actions.executions),
                 "forge_results": len(agent.actions.forge_results),
+                "culture_results": len(agent.actions.culture_results),
                 "episodic_memories": len(agent.memory.episodes),
             }
             if event.payload["private_state_counts"] != expected_counts:
@@ -75,6 +82,12 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             forge_hash = state_hash(world.forge.model_dump(mode="json"))
             if event.payload["public_forge_hash"] != forge_hash:
                 raise ValueError("Turnover public Forge hash mismatch")
+            text_hash = state_hash(world.text_culture.model_dump(mode="json"))
+            if event.payload["text_culture_hash"] != text_hash:
+                raise ValueError("Turnover text culture hash mismatch")
+            social_hash = state_hash(world.social.model_dump(mode="json"))
+            if event.payload["social_world_hash"] != social_hash:
+                raise ValueError("Turnover social world hash mismatch")
 
             agent.lifecycle_state = LifecycleState.TURNED_OVER
             agent.state_version += 1
@@ -99,6 +112,12 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             forge_hash = state_hash(world.forge.model_dump(mode="json"))
             if event.payload["public_forge_hash"] != forge_hash:
                 raise ValueError("Replacement public Forge hash mismatch")
+            text_hash = state_hash(world.text_culture.model_dump(mode="json"))
+            if event.payload["text_culture_hash"] != text_hash:
+                raise ValueError("Replacement text culture hash mismatch")
+            social_hash = state_hash(world.social.model_dump(mode="json"))
+            if event.payload["social_world_hash"] != social_hash:
+                raise ValueError("Replacement social world hash mismatch")
 
             agent.generation = new_generation
             agent.birth_tick = birth_tick
@@ -125,6 +144,12 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             )
             agent.resources.forge_operations_remaining = int(
                 event.payload.get("forge_operations", 0)
+            )
+            agent.resources.text_operations_remaining = int(
+                event.payload.get("text_operations", 0)
+            )
+            agent.resources.social_operations_remaining = int(
+                event.payload.get("social_operations", 0)
             )
             agent.resources.cycles_completed += int(
                 event.payload.get("cycles_completed_delta", 0)
@@ -179,6 +204,26 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             if agent.resources.forge_operations_remaining < amount:
                 raise ValueError("Forge-operation budget cannot become negative")
             agent.resources.forge_operations_remaining -= amount
+            agent.state_version += 1
+
+        case "resource.text_operation.consumed":
+            agent = _agent_for_event(world, event)
+            amount = int(event.payload.get("amount", 1))
+            if amount <= 0:
+                raise ValueError("Text-operation consumption must be positive")
+            if agent.resources.text_operations_remaining < amount:
+                raise ValueError("Text-operation budget cannot become negative")
+            agent.resources.text_operations_remaining -= amount
+            agent.state_version += 1
+
+        case "resource.social_operation.consumed":
+            agent = _agent_for_event(world, event)
+            amount = int(event.payload.get("amount", 1))
+            if amount <= 0:
+                raise ValueError("Social-operation consumption must be positive")
+            if agent.resources.social_operations_remaining < amount:
+                raise ValueError("Social-operation budget cannot become negative")
+            agent.resources.social_operations_remaining -= amount
             agent.state_version += 1
 
         case "agent.activity.idle":
@@ -494,6 +539,165 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             agent.actions.forge_results.append(result)
             agent.state_version += 1
 
+        case "culture.text.published":
+            agent = _agent_for_event(world, event)
+            entry = TextEntryRecord.model_validate(event.payload["entry"])
+            action = _proposed_action(agent, entry.source_action_id)
+
+            if action.kind != "text_publish":
+                raise ValueError("Text entry requires text_publish action")
+            if entry.creator_agent_id != agent.agent_id:
+                raise ValueError("Text creator does not match actor")
+            if entry.creator_generation != agent.generation:
+                raise ValueError("Text creator generation mismatch")
+            if entry.created_tick != event.world_tick:
+                raise ValueError("Text entry created_tick mismatch")
+            if entry.source_event_id != event.event_id:
+                raise ValueError("Text entry source_event_id mismatch")
+            if entry.entry_id in world.text_culture.entries:
+                raise ValueError(f"Duplicate text entry ID: {entry.entry_id}")
+
+            encoded = entry.content.encode("utf-8")
+            if entry.content_bytes != len(encoded):
+                raise ValueError("Text entry byte count mismatch")
+            if entry.content_sha256 != state_hash_bytes(encoded):
+                raise ValueError("Text entry content hash mismatch")
+            if len(entry.parent_entry_ids) != len(set(entry.parent_entry_ids)):
+                raise ValueError("Text lineage contains duplicate parents")
+            for parent_id in entry.parent_entry_ids:
+                if parent_id not in world.text_culture.entries:
+                    raise ValueError(f"Unknown parent text entry: {parent_id}")
+
+            world.text_culture.entries[entry.entry_id] = entry
+            world.text_culture.order.append(entry.entry_id)
+
+        case "social.message.sent":
+            agent = _agent_for_event(world, event)
+            message = SocialMessageRecord.model_validate(event.payload["message"])
+            action = _proposed_action(agent, message.source_action_id)
+
+            if action.kind != "social_send_message":
+                raise ValueError("Direct message requires social_send_message action")
+            _validate_social_message_actor(agent, event, message)
+            if message.channel != "direct" or message.visibility != "direct":
+                raise ValueError("social.message.sent must be a direct message")
+            if message.recipient_agent_id is None:
+                raise ValueError("Direct message requires recipient")
+            try:
+                recipient = world.agents[message.recipient_agent_id]
+            except KeyError as error:
+                raise ValueError("Direct message recipient is unknown") from error
+            if message.recipient_generation != recipient.generation:
+                raise ValueError("Direct message recipient generation mismatch")
+            _validate_social_message_content(message)
+            _append_social_message(world, message)
+
+        case "social.thread.opened":
+            agent = _agent_for_event(world, event)
+            thread = SocialThreadRecord.model_validate(event.payload["thread"])
+            message = SocialMessageRecord.model_validate(event.payload["message"])
+            action = _proposed_action(agent, message.source_action_id)
+
+            expected_kind = (
+                "issue"
+                if action.kind == "social_open_issue"
+                else "pull_request"
+                if action.kind == "social_open_pr"
+                else None
+            )
+            if expected_kind is None or thread.kind != expected_kind:
+                raise ValueError("Thread kind does not match social action")
+            _validate_social_message_actor(agent, event, message)
+            if message.visibility != "public" or message.channel != thread.kind:
+                raise ValueError("Opening social message must be public thread content")
+            if message.thread_id != thread.thread_id:
+                raise ValueError("Opening message thread_id mismatch")
+            if thread.creator_agent_id != agent.agent_id:
+                raise ValueError("Social thread creator does not match actor")
+            if thread.creator_generation != agent.generation:
+                raise ValueError("Social thread creator generation mismatch")
+            if thread.created_tick != event.world_tick:
+                raise ValueError("Social thread created_tick mismatch")
+            if thread.opening_message_id != message.message_id:
+                raise ValueError("Social thread opening message mismatch")
+            if thread.message_ids != [message.message_id]:
+                raise ValueError("New social thread must contain opening message only")
+            if thread.thread_id in world.social.threads:
+                raise ValueError(f"Duplicate social thread ID: {thread.thread_id}")
+            _validate_social_message_content(message)
+            _append_social_message(world, message)
+            world.social.threads[thread.thread_id] = thread
+            world.social.thread_order.append(thread.thread_id)
+
+        case "social.thread.message_posted":
+            agent = _agent_for_event(world, event)
+            message = SocialMessageRecord.model_validate(event.payload["message"])
+            action = _proposed_action(agent, message.source_action_id)
+
+            if action.kind != "social_post_message":
+                raise ValueError("Thread message requires social_post_message action")
+            _validate_social_message_actor(agent, event, message)
+            if message.visibility != "public" or message.channel != "thread_message":
+                raise ValueError("Thread message must be public")
+            if message.thread_id is None:
+                raise ValueError("Thread message requires thread_id")
+            try:
+                thread = world.social.threads[message.thread_id]
+            except KeyError as error:
+                raise ValueError("Thread message references unknown thread") from error
+            _validate_social_message_content(message)
+            _append_social_message(world, message)
+            thread.message_ids.append(message.message_id)
+
+        case "culture.operation.rejected":
+            _agent_for_event(world, event)
+
+        case "culture.action.completed":
+            agent = _agent_for_event(world, event)
+            action = _proposed_action(agent, str(event.payload["action_id"]))
+            result = CultureActionResultRecord.model_validate(event.payload["result"])
+            if not (
+                action.kind == "text_publish"
+                or action.kind.startswith("social_")
+            ):
+                raise ValueError("Culture result requires text/social action")
+            if result.action_id != action.action_id:
+                raise ValueError("Culture result action_id mismatch")
+            if result.status != "completed":
+                raise ValueError("Completed culture action requires completed result")
+            if any(
+                existing.result_id == result.result_id
+                for existing in agent.actions.culture_results
+            ):
+                raise ValueError(f"Duplicate culture result ID: {result.result_id}")
+
+            action.status = ActionStatus.EXECUTED
+            agent.actions.culture_results.append(result)
+            agent.state_version += 1
+
+        case "culture.action.rejected":
+            agent = _agent_for_event(world, event)
+            action = _proposed_action(agent, str(event.payload["action_id"]))
+            result = CultureActionResultRecord.model_validate(event.payload["result"])
+            if not (
+                action.kind == "text_publish"
+                or action.kind.startswith("social_")
+            ):
+                raise ValueError("Culture rejection requires text/social action")
+            if result.action_id != action.action_id:
+                raise ValueError("Culture rejection action_id mismatch")
+            if result.status != "rejected":
+                raise ValueError("Rejected culture action requires rejected result")
+            if any(
+                existing.result_id == result.result_id
+                for existing in agent.actions.culture_results
+            ):
+                raise ValueError(f"Duplicate culture result ID: {result.result_id}")
+
+            action.status = ActionStatus.REJECTED
+            agent.actions.culture_results.append(result)
+            agent.state_version += 1
+
         case "memory.episode.recorded":
             agent = _agent_for_event(world, event)
             memory = EpisodicMemory.model_validate(event.payload)
@@ -572,6 +776,32 @@ def _proposed_action(agent, action_id: str) -> ActionIntentRecord:
                 )
             return action
     raise ValueError(f"Unknown action ID: {action_id}")
+
+
+def _validate_social_message_actor(agent, event, message) -> None:
+    if message.sender_agent_id != agent.agent_id:
+        raise ValueError("Social sender does not match actor")
+    if message.sender_generation != agent.generation:
+        raise ValueError("Social sender generation mismatch")
+    if message.created_tick != event.world_tick:
+        raise ValueError("Social message created_tick mismatch")
+    if message.source_event_id != event.event_id:
+        raise ValueError("Social message source_event_id mismatch")
+
+
+def _validate_social_message_content(message) -> None:
+    encoded = message.content.encode("utf-8")
+    if message.content_bytes != len(encoded):
+        raise ValueError("Social message byte count mismatch")
+    if message.content_sha256 != state_hash_bytes(encoded):
+        raise ValueError("Social message content hash mismatch")
+
+
+def _append_social_message(world: WorldState, message) -> None:
+    if message.message_id in world.social.messages:
+        raise ValueError(f"Duplicate social message ID: {message.message_id}")
+    world.social.messages[message.message_id] = message
+    world.social.message_order.append(message.message_id)
 
 
 def state_hash_bytes(value: bytes) -> str:
