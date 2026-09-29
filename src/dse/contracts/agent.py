@@ -59,6 +59,13 @@ class GoalRecord(BaseModel):
     expected_value: float = Field(ge=0.0, le=1.0)
     estimated_cost: float = Field(ge=0.0, le=1.0)
     confidence: float = Field(ge=0.0, le=1.0)
+    progress: float = Field(default=0.0, ge=0.0, le=1.0)
+    last_progress_tick: int | None = Field(default=None, ge=0)
+    last_progress_summary: str | None = Field(default=None, max_length=240)
+    completion_tick: int | None = Field(default=None, ge=0)
+    completion_summary: str | None = Field(default=None, max_length=320)
+    abandonment_tick: int | None = Field(default=None, ge=0)
+    abandonment_summary: str | None = Field(default=None, max_length=320)
     status: GoalStatus = GoalStatus.ACTIVE
 
 

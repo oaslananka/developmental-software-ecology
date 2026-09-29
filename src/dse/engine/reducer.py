@@ -112,6 +112,50 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             agent.goals.active_goal_id = goal.goal_id
             agent.state_version += 1
 
+        case "agent.goal.progressed":
+            agent = _agent_for_event(world, event)
+            goal = _active_goal(agent, str(event.payload["goal_id"]))
+
+            old_progress = float(event.payload["old_progress"])
+            new_progress = float(event.payload["new_progress"])
+            if abs(goal.progress - old_progress) > 1e-9:
+                raise ValueError(
+                    f"Goal progress mismatch for {goal.goal_id}: "
+                    f"state={goal.progress}, event={old_progress}"
+                )
+            if not old_progress < new_progress < 1.0:
+                raise ValueError(
+                    "Progress event must increase progress and remain below completion"
+                )
+
+            goal.progress = new_progress
+            goal.last_progress_tick = event.world_tick
+            goal.last_progress_summary = str(event.payload["progress_summary"])
+            agent.state_version += 1
+
+        case "agent.goal.completed":
+            agent = _agent_for_event(world, event)
+            goal = _active_goal(agent, str(event.payload["goal_id"]))
+
+            goal.progress = 1.0
+            goal.last_progress_tick = event.world_tick
+            goal.last_progress_summary = str(event.payload["summary"])
+            goal.completion_tick = event.world_tick
+            goal.completion_summary = str(event.payload["summary"])
+            goal.status = GoalStatus.COMPLETED
+            agent.goals.active_goal_id = None
+            agent.state_version += 1
+
+        case "agent.goal.abandoned":
+            agent = _agent_for_event(world, event)
+            goal = _active_goal(agent, str(event.payload["goal_id"]))
+
+            goal.abandonment_tick = event.world_tick
+            goal.abandonment_summary = str(event.payload["summary"])
+            goal.status = GoalStatus.ABANDONED
+            agent.goals.active_goal_id = None
+            agent.state_version += 1
+
         case "agent.goal.proposal_rejected":
             pass
 
@@ -167,6 +211,21 @@ def _agent_for_event(world: WorldState, event: WorldEvent):
         return world.agents[event.actor_agent_id]
     except KeyError as error:
         raise ValueError(f"Unknown agent: {event.actor_agent_id}") from error
+
+
+def _active_goal(agent, goal_id: str) -> GoalRecord:
+    if agent.goals.active_goal_id != goal_id:
+        raise ValueError(
+            f"Goal {goal_id} is not active; active={agent.goals.active_goal_id}"
+        )
+
+    for goal in agent.goals.goals:
+        if goal.goal_id == goal_id:
+            if goal.status != GoalStatus.ACTIVE:
+                raise ValueError(f"Goal {goal_id} is not in active status")
+            return goal
+
+    raise ValueError(f"Unknown goal ID: {goal_id}")
 
 
 def _find_memory(agent, memory_id: str) -> EpisodicMemory:
