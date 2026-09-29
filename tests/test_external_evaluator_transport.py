@@ -168,8 +168,11 @@ def test_handshake_and_evaluation_bind_secret_attestation_and_readiness() -> Non
         manifest,
         outcome.report,
     )
-    assert readiness.research_runtime_ready is True
-    assert readiness.missing_surfaces == []
+    assert outcome.report.attestation_evidence_kind == "test-fixture"
+    assert readiness.research_runtime_ready is False
+    assert readiness.missing_surfaces == [
+        "attested_hardened_evaluator_runtime",
+    ]
 
     assert captured_authorization == [
         f"Bearer {TOKEN}",
