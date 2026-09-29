@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from dse.contracts.agent import AgentState, TraitState
+from dse.contracts.agent import AgentState, ResourceState, TraitState
 from dse.contracts.experiment import ExperimentManifest
 
 
@@ -15,6 +15,7 @@ class WorldState:
 def create_world(manifest: ExperimentManifest) -> WorldState:
     world = WorldState(experiment_id=manifest.experiment.id)
     traits = manifest.agents.initial_traits
+    lifecycle = manifest.agents.lifecycle
 
     for index in range(manifest.world.agent_count):
         agent_id = f"agent-{index + 1:04d}"
@@ -26,6 +27,9 @@ def create_world(manifest: ExperimentManifest) -> WorldState:
                 persistence=traits.persistence,
                 social_bias=traits.social_bias,
                 risk_bias=traits.risk_bias,
+            ),
+            resources=ResourceState(
+                activity_units_remaining=lifecycle.active_ticks_per_cycle,
             ),
         )
 
