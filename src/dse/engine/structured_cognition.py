@@ -40,6 +40,8 @@ async def advance_structured_cognition_tick(
             continue
 
         context = {
+            "generation": agent.generation,
+            "birth_tick": agent.birth_tick,
             "lifecycle_state": agent.lifecycle_state.value,
             "activity_units_remaining": agent.resources.activity_units_remaining,
             "model_calls_remaining": agent.resources.model_calls_remaining,
@@ -93,6 +95,8 @@ async def advance_structured_cognition_tick(
                     {
                         "repo_id": repository.repo_id,
                         "name": repository.name,
+                        "creator_agent_id": repository.creator_agent_id,
+                        "creator_generation": repository.creator_generation,
                         "head_commit_id": repository.head_commit_id,
                         "artifact_count": repository.artifact_count,
                         "path_heads": dict(sorted(repository.path_heads.items())),
