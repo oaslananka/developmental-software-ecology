@@ -16,6 +16,13 @@ async def process_tool_broker(
     if not manifest.agents.tool_broker.enabled:
         return []
 
+    expected_executor = manifest.agents.tool_broker.executor
+    if executor.executor_name != expected_executor:
+        raise ValueError(
+            f"Configured executor {expected_executor} does not match "
+            f"runtime executor {executor.executor_name}"
+        )
+
     events: list[WorldEvent] = []
 
     for agent_id in sorted(world.agents):
@@ -28,6 +35,9 @@ async def process_tool_broker(
 
         for action in pending:
             rejection_reason = _policy_rejection_reason(action)
+            if rejection_reason is None:
+                rejection_reason = executor.policy_rejection_reason(action)
+
             if rejection_reason is not None:
                 events.append(
                     _emit(
@@ -37,6 +47,7 @@ async def process_tool_broker(
                         payload={
                             "action_id": action.action_id,
                             "reason": rejection_reason,
+                            "executor": executor.executor_name,
                         },
                     )
                 )
@@ -51,6 +62,7 @@ async def process_tool_broker(
                         payload={
                             "action_id": action.action_id,
                             "reason": "execution_budget_exhausted",
+                            "executor": executor.executor_name,
                         },
                     )
                 )
@@ -71,12 +83,17 @@ async def process_tool_broker(
                     actor_agent_id=agent_id,
                     payload={
                         "action_id": action.action_id,
-                        "executor": "deterministic-fake",
+                        "executor": executor.executor_name,
                     },
                 )
             )
 
             result = await executor.execute(action)
+            if result.executor != executor.executor_name:
+                raise ValueError(
+                    "Tool result executor does not match runtime executor"
+                )
+
             execution_id = f"{action.action_id}:execution"
             events.append(
                 _emit(
