@@ -243,6 +243,9 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             action.status = ActionStatus.REJECTED
             agent.state_version += 1
 
+        case "sandbox.admission.evaluated":
+            pass
+
         case "memory.episode.recorded":
             agent = _agent_for_event(world, event)
             memory = EpisodicMemory.model_validate(event.payload)
