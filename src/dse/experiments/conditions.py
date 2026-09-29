@@ -122,6 +122,30 @@ def validate_condition_manifest(manifest: "ExperimentManifest") -> None:
             "runtime.forge.enabled must match the condition artifact treatment"
         )
 
+    text_expected = profile.text_culture == "persistent"
+    if manifest.runtime.text_culture.enabled != text_expected:
+        raise ValueError(
+            "runtime.text_culture.enabled must match the condition text treatment"
+        )
+
+    social_expected = profile.social_channel in {
+        "direct",
+        "issues_pr_messages",
+    }
+    if manifest.runtime.social.enabled != social_expected:
+        raise ValueError(
+            "runtime.social.enabled must match the condition social treatment"
+        )
+    expected_social_mode = (
+        profile.social_channel
+        if social_expected
+        else "none"
+    )
+    if manifest.runtime.social.mode != expected_social_mode:
+        raise ValueError(
+            "runtime.social.mode must match the condition social treatment"
+        )
+
     if profile.turnover_required and not manifest.agents.turnover.enabled:
         raise ValueError(
             f"Condition {profile.condition} requires controlled turnover"
@@ -167,7 +191,10 @@ def assess_condition_support(
     missing: list[str] = []
     notes: list[str] = []
 
-    if profile.text_culture == "persistent":
+    if (
+        profile.text_culture == "persistent"
+        and not manifest.runtime.text_culture.enabled
+    ):
         missing.append("persistent_text_culture_runtime")
     elif profile.text_culture == "docs_only":
         notes.append(
@@ -175,9 +202,21 @@ def assess_condition_support(
             "does not by itself establish executable culture."
         )
 
-    if profile.social_channel == "direct":
+    if (
+        profile.social_channel == "direct"
+        and (
+            not manifest.runtime.social.enabled
+            or manifest.runtime.social.mode != "direct"
+        )
+    ):
         missing.append("direct_social_channel_runtime")
-    elif profile.social_channel == "issues_pr_messages":
+    elif (
+        profile.social_channel == "issues_pr_messages"
+        and (
+            not manifest.runtime.social.enabled
+            or manifest.runtime.social.mode != "issues_pr_messages"
+        )
+    ):
         missing.append("issues_pr_messages_runtime")
     elif profile.social_channel == "limited":
         notes.append(
