@@ -6,6 +6,12 @@ from dse.engine.hashing import state_hash
 class DeterministicFakeExecutor:
     executor_name = "deterministic-fake"
 
+    def policy_rejection_reason(
+        self,
+        action: ActionIntentRecord,
+    ) -> str | None:
+        return None
+
     async def execute(
         self,
         action: ActionIntentRecord,
