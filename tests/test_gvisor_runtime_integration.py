@@ -12,6 +12,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 IMAGE = os.environ.get("DSE_GVISOR_PROBE_IMAGE", "python:3.12-slim")
+PID_PROBE_MEMORY = "512m"
 
 
 def _run(
@@ -269,6 +270,7 @@ print(json.dumps({
     control = _run_json_probe(
         "dse-gvisor-pid-control",
         script,
+        memory=PID_PROBE_MEMORY,
         pids_limit=128,
     )
     assert control == {
@@ -282,6 +284,7 @@ print(json.dumps({
         _create_probe_container(
             limited_name,
             script,
+            memory=PID_PROBE_MEMORY,
             pids_limit=32,
         )
         result = _run(
@@ -294,6 +297,8 @@ print(json.dumps({
         )[0]
 
         assert inspect["HostConfig"]["PidsLimit"] == 32
+        assert inspect["HostConfig"]["Memory"] == 512 * 1024 * 1024
+        assert inspect["HostConfig"]["MemorySwap"] == 512 * 1024 * 1024
         assert inspect["State"]["OOMKilled"] is False
 
         if result.returncode == 0:
