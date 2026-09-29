@@ -32,6 +32,7 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             agent.lifecycle_state = LifecycleState.AWAKE
             agent.resources.activity_units_remaining = int(event.payload["activity_units"])
             agent.resources.sleep_ticks_remaining = 0
+            agent.resources.model_calls_remaining = int(event.payload.get("model_calls", 0))
             agent.resources.cycles_completed += int(
                 event.payload.get("cycles_completed_delta", 0)
             )
@@ -45,6 +46,16 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             if agent.resources.activity_units_remaining < amount:
                 raise ValueError("Activity budget cannot become negative")
             agent.resources.activity_units_remaining -= amount
+            agent.state_version += 1
+
+        case "resource.model_call.consumed":
+            agent = _agent_for_event(world, event)
+            amount = int(event.payload.get("amount", 1))
+            if amount <= 0:
+                raise ValueError("Model-call consumption must be positive")
+            if agent.resources.model_calls_remaining < amount:
+                raise ValueError("Model-call budget cannot become negative")
+            agent.resources.model_calls_remaining -= amount
             agent.state_version += 1
 
         case "agent.activity.idle":
@@ -72,6 +83,18 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             if agent.resources.sleep_ticks_remaining < amount:
                 raise ValueError("Sleep ticks cannot become negative")
             agent.resources.sleep_ticks_remaining -= amount
+            agent.state_version += 1
+
+        case "model.call.completed":
+            pass
+
+        case "agent.cognition.decided":
+            agent = _agent_for_event(world, event)
+            agent.cognition.calls_completed += 1
+            agent.cognition.last_cognition_tick = event.world_tick
+            agent.cognition.last_decision = str(event.payload["decision"])
+            agent.cognition.last_reason_summary = str(event.payload["reason_summary"])
+            agent.cognition.last_confidence = float(event.payload["confidence"])
             agent.state_version += 1
 
         case _:

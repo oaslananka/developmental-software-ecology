@@ -20,6 +20,7 @@ def advance_cognitionless_tick(
     events.append(tick_event)
 
     lifecycle = manifest.agents.lifecycle
+    cognition = manifest.agents.cognition
 
     for agent_id in sorted(world.agents):
         agent = world.agents[agent_id]
@@ -32,6 +33,7 @@ def advance_cognitionless_tick(
                     actor_agent_id=agent_id,
                     payload={
                         "activity_units": lifecycle.active_ticks_per_cycle,
+                        "model_calls": cognition.model_calls_per_cycle,
                         "cycles_completed_delta": 0,
                     },
                 )
@@ -82,6 +84,7 @@ def advance_cognitionless_tick(
                         actor_agent_id=agent_id,
                         payload={
                             "activity_units": lifecycle.active_ticks_per_cycle,
+                            "model_calls": cognition.model_calls_per_cycle,
                             "cycles_completed_delta": 1,
                         },
                     )
