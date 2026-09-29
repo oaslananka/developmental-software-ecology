@@ -152,6 +152,10 @@ class FunctionalEvaluationReport(HiddenEvaluationPlan):
         pattern="^[0-9a-f]{64}$",
     )
     attestation_id: str = Field(min_length=1, max_length=160)
+    attestation_evidence_kind: Literal[
+        "test-fixture",
+        "runtime-measured",
+    ]
     backend: str = Field(min_length=1, max_length=64)
     backend_version: str = Field(min_length=1, max_length=120)
     runner_kind: Literal["test-double", "external-hardened"]
