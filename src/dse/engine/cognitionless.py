@@ -7,6 +7,7 @@ from dse.engine.memory import (
     select_forgetting_candidates,
 )
 from dse.engine.reducer import apply_event
+from dse.engine.turnover import process_scheduled_turnovers
 from dse.engine.world import WorldState
 
 
@@ -23,6 +24,7 @@ def advance_cognitionless_tick(
     )
     apply_event(world, tick_event)
     events.append(tick_event)
+    events.extend(process_scheduled_turnovers(world, manifest))
 
     lifecycle = manifest.agents.lifecycle
     cognition = manifest.agents.cognition
@@ -107,6 +109,7 @@ def advance_cognitionless_tick(
                             "model_calls": cognition.model_calls_per_cycle,
                             "action_proposals": actions.proposals_per_cycle,
                             "tool_executions": tool_broker.executions_per_cycle,
+                            "forge_operations": forge.operations_per_cycle,
                             "cycles_completed_delta": 1,
                         },
                     )
