@@ -41,11 +41,22 @@ class DeterministicFakeProvider:
                 "CognitionDecision/v0.3",
                 "CognitionDecision/v0.4",
                 "CognitionDecision/v0.5",
+                "CognitionDecision/v0.6",
             }
             and goal_generation_enabled
             and active_goal is None
         ):
             decision = _goal_proposal()
+        elif (
+            request.response_schema == "CognitionDecision/v0.6"
+            and active_goal is not None
+        ):
+            decision = _culture_v06_decision(
+                request,
+                active_goal=active_goal,
+                action_generation_enabled=action_generation_enabled,
+                action_budget=action_budget,
+            )
         elif (
             request.response_schema == "CognitionDecision/v0.5"
             and active_goal is not None
@@ -244,6 +255,305 @@ def _goal_proposal() -> CognitionDecision:
         confidence=0.8,
         focus="environment",
         goal=goal,
+    )
+
+
+def _culture_v06_decision(
+    request: ModelRequest,
+    *,
+    active_goal: dict,
+    action_generation_enabled: bool,
+    action_budget: int,
+) -> CognitionDecision:
+    context = request.context
+    generation = int(context.get("generation", 0) or 0)
+    progress = float(active_goal.get("progress", 0.0))
+
+    forge_enabled = bool(context.get("forge_action_enabled", False))
+    forge_budget = int(context.get("forge_operations_remaining", 0) or 0)
+    forge_results = list(context.get("forge_results") or [])
+    repositories = list((context.get("forge_world") or {}).get("repositories") or [])
+
+    text_enabled = bool(context.get("text_culture_enabled", False))
+    text_budget = int(context.get("text_operations_remaining", 0) or 0)
+    text_entries = list(context.get("text_culture") or [])
+
+    social_enabled = bool(context.get("social_action_enabled", False))
+    social_mode = str(context.get("social_mode") or "none")
+    social_budget = int(context.get("social_operations_remaining", 0) or 0)
+    social_peers = list(context.get("social_peers") or [])
+
+    culture_results = list(context.get("culture_results") or [])
+    text_results = [
+        result
+        for result in culture_results
+        if result.get("operation") == "publish_text"
+    ]
+    social_results = [
+        result
+        for result in culture_results
+        if result.get("operation")
+        in {"send_message", "open_issue", "open_pr", "post_message"}
+    ]
+
+    if action_generation_enabled and action_budget > 0:
+        if forge_enabled and forge_budget > 0 and not forge_results:
+            return CognitionDecision(
+                decision="propose_action",
+                reason_summary=(
+                    "Create a durable public repository before adding executable culture."
+                ),
+                confidence=0.9,
+                focus="culture",
+                action=ActionProposal(
+                    kind="forge_create_repository",
+                    summary="Create a public cultural repository.",
+                    target=(
+                        f"culture-{request.agent_id}"
+                        if generation == 0
+                        else f"culture-{request.agent_id}-g{generation}"
+                    ),
+                    rationale=(
+                        "The executable treatment requires a persistent repository substrate."
+                    ),
+                    expected_value=0.9,
+                    estimated_cost=0.25,
+                ),
+            )
+
+        create_result = _result_for_operation(forge_results, "create_repository")
+        if (
+            forge_enabled
+            and forge_budget > 0
+            and len(forge_results) == 1
+            and create_result is not None
+            and create_result.get("status") == "completed"
+        ):
+            own_repo_id = create_result["result_data"]["repo_id"]
+            return CognitionDecision(
+                decision="propose_action",
+                reason_summary="Publish the current hypothesis into persistent Forge culture.",
+                confidence=0.9,
+                focus="culture",
+                action=ActionProposal(
+                    kind="forge_publish_artifact",
+                    summary="Publish the current executable-culture hypothesis.",
+                    target="notes/hypothesis.md",
+                    rationale=(
+                        "A durable artifact makes the current inquiry externally observable."
+                    ),
+                    expected_value=0.9,
+                    estimated_cost=0.35,
+                    draft_content=(
+                        "# Persistent Hypothesis\n\n"
+                        f"Created by {request.agent_id}, generation {generation}.\n"
+                        "Shared artifacts can preserve useful state beyond private memory.\n"
+                    ),
+                    repo_id=own_repo_id,
+                ),
+            )
+
+        if text_enabled and text_budget > 0 and not text_results:
+            parent_ids: list[str] = []
+            if generation > 0:
+                same_slot_older = [
+                    entry
+                    for entry in text_entries
+                    if (
+                        entry.get("creator_agent_id") == request.agent_id
+                        and int(entry.get("creator_generation", 0)) < generation
+                    )
+                ]
+                if same_slot_older:
+                    parent_ids = [
+                        str(
+                            sorted(
+                                same_slot_older,
+                                key=lambda item: (
+                                    int(item.get("creator_generation", 0)),
+                                    str(item.get("entry_id")),
+                                ),
+                            )[-1]["entry_id"]
+                        )
+                    ]
+            return CognitionDecision(
+                decision="propose_action",
+                reason_summary=(
+                    "Externalize a persistent text hypothesis"
+                    + (
+                        " that explicitly cites older public culture."
+                        if parent_ids
+                        else "."
+                    )
+                ),
+                confidence=0.9,
+                focus="culture",
+                action=ActionProposal(
+                    kind="text_publish",
+                    summary="Publish a persistent shared text hypothesis.",
+                    target=f"shared-hypothesis-{request.agent_id}-g{generation}",
+                    rationale=(
+                        "Persistent text provides a non-executable cultural inheritance channel."
+                    ),
+                    expected_value=0.9,
+                    estimated_cost=0.2,
+                    draft_content=(
+                        "# Shared Hypothesis\n\n"
+                        f"Agent: {request.agent_id}\n"
+                        f"Generation: {generation}\n"
+                        "Externalized observations can survive individual turnover.\n"
+                    ),
+                    parent_text_entry_ids=parent_ids,
+                ),
+            )
+
+        if social_enabled and social_budget > 0 and not social_results:
+            if social_mode == "direct" and social_peers:
+                target = str(
+                    sorted(social_peers, key=lambda item: str(item["agent_id"]))[0][
+                        "agent_id"
+                    ]
+                )
+                return CognitionDecision(
+                    decision="propose_action",
+                    reason_summary=(
+                        "Send a bounded direct message to expose a social-learning channel."
+                    ),
+                    confidence=0.85,
+                    focus="social",
+                    action=ActionProposal(
+                        kind="social_send_message",
+                        summary="Share the current hypothesis with a peer.",
+                        target=target,
+                        rationale=(
+                            "The T treatment includes direct social communication."
+                        ),
+                        expected_value=0.8,
+                        estimated_cost=0.15,
+                        draft_content=(
+                            f"{request.agent_id} g{generation}: I externalized a shared "
+                            "hypothesis about persistent culture."
+                        ),
+                    ),
+                )
+
+            if social_mode == "issues_pr_messages":
+                return CognitionDecision(
+                    decision="propose_action",
+                    reason_summary=(
+                        "Open a public issue so social coordination remains externally visible."
+                    ),
+                    confidence=0.85,
+                    focus="social",
+                    action=ActionProposal(
+                        kind="social_open_issue",
+                        summary="Open a public coordination issue.",
+                        target=f"Culture observation by {request.agent_id} g{generation}",
+                        rationale=(
+                            "The ES treatment uses public issue/PR/message coordination."
+                        ),
+                        expected_value=0.82,
+                        estimated_cost=0.15,
+                        draft_content=(
+                            "Public coordination note: preserve useful observations in "
+                            "persistent cultural substrates."
+                        ),
+                    ),
+                )
+
+        if (
+            text_enabled
+            and social_mode == "direct"
+            and text_budget > 0
+            and len(text_results) == 1
+            and social_results
+        ):
+            candidates = [
+                entry
+                for entry in text_entries
+                if not (
+                    entry.get("creator_agent_id") == request.agent_id
+                    and int(entry.get("creator_generation", 0)) == generation
+                )
+            ]
+            if generation > 0:
+                inherited = [
+                    entry
+                    for entry in candidates
+                    if int(entry.get("creator_generation", 0)) < generation
+                ]
+                candidates = inherited or candidates
+            if candidates:
+                parent = sorted(
+                    candidates,
+                    key=lambda item: (
+                        int(item.get("created_tick", 0)),
+                        str(item.get("entry_id")),
+                    ),
+                )[0]
+                parent_id = str(parent["entry_id"])
+                return CognitionDecision(
+                    decision="propose_action",
+                    reason_summary=(
+                        "Publish a lineage-linked text derived from observed shared culture."
+                    ),
+                    confidence=0.9,
+                    focus="culture",
+                    action=ActionProposal(
+                        kind="text_publish",
+                        summary="Publish a derived shared text entry.",
+                        target=f"derived-hypothesis-{request.agent_id}-g{generation}",
+                        rationale=(
+                            "Explicit parent lineage distinguishes reuse from isolated writing."
+                        ),
+                        expected_value=0.92,
+                        estimated_cost=0.25,
+                        draft_content=(
+                            "# Derived Shared Hypothesis\n\n"
+                            f"Agent: {request.agent_id}\n"
+                            f"Generation: {generation}\n"
+                            f"Parent text entry: {parent_id}\n"
+                        ),
+                        parent_text_entry_ids=[parent_id],
+                    ),
+                )
+
+    required_forge_results = 2 if forge_enabled else 0
+    required_text_results = 2 if social_mode == "direct" and text_enabled else (1 if text_enabled else 0)
+    required_social_results = 1 if social_enabled else 0
+
+    treatment_complete = (
+        len(forge_results) >= required_forge_results
+        and len(text_results) >= required_text_results
+        and len(social_results) >= required_social_results
+    )
+    if treatment_complete and progress < 0.8:
+        return CognitionDecision(
+            decision="update_goal",
+            reason_summary=(
+                "The active inquiry has used every enabled cultural treatment channel."
+            ),
+            confidence=0.9,
+            focus="culture",
+            goal_update=GoalProgressUpdate(
+                progress=0.8,
+                progress_summary=(
+                    "Persistent cultural and social channels were exercised under bounded budgets."
+                ),
+                confidence=0.9,
+            ),
+        )
+
+    if progress >= 0.8:
+        return _goal_completion(
+            "The inquiry externalized durable culture and exercised the enabled social channel."
+        )
+
+    return CognitionDecision(
+        decision="observe",
+        reason_summary="Wait for treatment actions to complete before advancing the goal.",
+        confidence=0.7,
+        focus="culture",
     )
 
 
