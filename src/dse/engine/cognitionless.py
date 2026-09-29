@@ -28,6 +28,7 @@ def advance_cognitionless_tick(
     cognition = manifest.agents.cognition
     actions = manifest.agents.actions
     tool_broker = manifest.agents.tool_broker
+    forge = manifest.runtime.forge
 
     for agent_id in sorted(world.agents):
         agent = world.agents[agent_id]
@@ -43,6 +44,7 @@ def advance_cognitionless_tick(
                         "model_calls": cognition.model_calls_per_cycle,
                         "action_proposals": actions.proposals_per_cycle,
                         "tool_executions": tool_broker.executions_per_cycle,
+                        "forge_operations": forge.operations_per_cycle,
                         "cycles_completed_delta": 0,
                     },
                 )

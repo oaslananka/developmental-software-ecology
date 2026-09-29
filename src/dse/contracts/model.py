@@ -32,6 +32,9 @@ class ActionProposal(StrictModel):
         "inspect_workspace",
         "draft_artifact",
         "run_validation",
+        "forge_create_repository",
+        "forge_inspect_repository",
+        "forge_publish_artifact",
     ]
     summary: str = Field(min_length=1, max_length=240)
     target: str = Field(min_length=1, max_length=200)
@@ -39,14 +42,34 @@ class ActionProposal(StrictModel):
     expected_value: float = Field(ge=0.0, le=1.0)
     estimated_cost: float = Field(ge=0.0, le=1.0)
     draft_content: str | None = Field(default=None, max_length=4000)
+    repo_id: str | None = Field(default=None, max_length=96)
+    parent_artifact_ids: list[str] = Field(default_factory=list, max_length=64)
+    expected_parent_commit_id: str | None = Field(default=None, max_length=96)
 
     @model_validator(mode="after")
-    def validate_draft_content(self):
-        if self.kind == "draft_artifact" and not self.draft_content:
-            raise ValueError("draft_artifact requires draft_content")
-        if self.kind != "draft_artifact" and self.draft_content is not None:
+    def validate_action_shape(self):
+        forge_publish = self.kind == "forge_publish_artifact"
+        if self.kind in {"draft_artifact", "forge_publish_artifact"}:
+            if not self.draft_content:
+                raise ValueError(f"{self.kind} requires draft_content")
+        elif self.draft_content is not None:
             raise ValueError(
-                "draft_content is only allowed for draft_artifact"
+                "draft_content is only allowed for artifact draft/publish actions"
+            )
+
+        if forge_publish:
+            if self.repo_id is None:
+                raise ValueError("forge_publish_artifact requires repo_id")
+        elif self.repo_id is not None:
+            raise ValueError("repo_id is only allowed for forge_publish_artifact")
+
+        if self.parent_artifact_ids and not forge_publish:
+            raise ValueError(
+                "parent_artifact_ids are only allowed for forge_publish_artifact"
+            )
+        if self.expected_parent_commit_id is not None and not forge_publish:
+            raise ValueError(
+                "expected_parent_commit_id is only allowed for forge_publish_artifact"
             )
         return self
 
@@ -115,6 +138,7 @@ class ModelRequest(StrictModel):
         "CognitionDecision/v0.2",
         "CognitionDecision/v0.3",
         "CognitionDecision/v0.4",
+        "CognitionDecision/v0.5",
     ] = "CognitionDecision/v0.1"
 
 

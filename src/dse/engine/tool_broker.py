@@ -30,7 +30,10 @@ async def process_tool_broker(
         pending = [
             action
             for action in agent.actions.proposals
-            if action.status == ActionStatus.PROPOSED
+            if (
+                action.status == ActionStatus.PROPOSED
+                and not action.kind.startswith("forge_")
+            )
         ]
 
         for action in pending:
