@@ -165,6 +165,42 @@ class SandboxPolicyConfig(StrictModel):
     wall_timeout_seconds: int = Field(default=5, ge=1, le=120)
 
 
+class EvaluationConfig(StrictModel):
+    enabled: bool = False
+    suite_id: str | None = Field(default=None, min_length=1, max_length=160)
+    suite_hash: str | None = Field(
+        default=None,
+        min_length=64,
+        max_length=64,
+        pattern="^[0-9a-f]{64}$",
+    )
+    max_snapshot_artifacts: int = Field(default=512, ge=1, le=4096)
+    max_snapshot_bytes: int = Field(default=1_048_576, ge=1024, le=67_108_864)
+    max_cases: int = Field(default=256, ge=1, le=4096)
+    sandbox_enabled: bool = False
+    sandbox_policy: SandboxPolicyConfig = Field(
+        default_factory=SandboxPolicyConfig
+    )
+
+    @model_validator(mode="after")
+    def validate_hidden_evaluator(self):
+        if not self.enabled:
+            return self
+        if self.suite_id is None or self.suite_hash is None:
+            raise ValueError(
+                "enabled evaluation requires suite_id and suite_hash"
+            )
+        if not self.sandbox_enabled:
+            raise ValueError(
+                "enabled evaluation requires evaluation sandbox"
+            )
+        if self.sandbox_policy.backend == "none":
+            raise ValueError(
+                "enabled evaluation requires a configured sandbox backend"
+            )
+        return self
+
+
 class MemoryConfig(StrictModel):
     enabled: bool = False
     capacity: int = Field(default=32, ge=1)
@@ -220,6 +256,7 @@ class ExperimentManifest(StrictModel):
     world: WorldConfig
     agents: AgentConfig
     runtime: RuntimeConfig
+    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
 
     @model_validator(mode="after")
     def validate_condition_contract(self):
