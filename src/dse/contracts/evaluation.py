@@ -199,6 +199,7 @@ class HiddenEvaluationOutcome(StrictModel):
         "result_binding_mismatch",
         "case_limit_exceeded",
         "duration_limit_exceeded",
+        "world_state_mutated",
     ]
     evaluation_id: str | None = Field(default=None, max_length=240)
     report: FunctionalEvaluationReport | None = None
