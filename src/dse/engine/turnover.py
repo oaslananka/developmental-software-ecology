@@ -15,6 +15,8 @@ def process_scheduled_turnovers(
 
     events: list[WorldEvent] = []
     forge_hash = state_hash(world.forge.model_dump(mode="json"))
+    text_hash = state_hash(world.text_culture.model_dump(mode="json"))
+    social_hash = state_hash(world.social.model_dump(mode="json"))
 
     for agent_id in sorted(config.agent_ids):
         try:
@@ -47,6 +49,8 @@ def process_scheduled_turnovers(
                     "reason": "scheduled_turnover",
                     "private_state_counts": counts,
                     "public_forge_hash": forge_hash,
+                    "public_text_hash": text_hash,
+                    "public_social_hash": social_hash,
                 },
             )
         )
@@ -61,6 +65,8 @@ def process_scheduled_turnovers(
                     "birth_tick": world.tick,
                     "traits_preserved": True,
                     "public_forge_hash": forge_hash,
+                    "public_text_hash": text_hash,
+                    "public_social_hash": social_hash,
                 },
             )
         )
