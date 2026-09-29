@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
-from typing import Any
 import uuid
+from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -40,5 +40,5 @@ def make_tick_event(
         sequence_number=sequence_number,
         world_tick=world_tick,
         event_type="world.tick.advanced",
-        created_at_wall_clock=datetime.now(timezone.utc),
+        created_at_wall_clock=datetime.now(UTC),
     )
