@@ -43,6 +43,7 @@ class CognitionConfig(StrictModel):
 
 class GoalConfig(StrictModel):
     enabled: bool = False
+    lifecycle_enabled: bool = False
     max_active_goals: int = Field(default=1, ge=1, le=1)
 
 
