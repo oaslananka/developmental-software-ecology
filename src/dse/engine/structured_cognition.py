@@ -3,6 +3,11 @@ from dse.contracts.event import WorldEvent, make_event
 from dse.contracts.experiment import ExperimentManifest
 from dse.contracts.model import ModelRequest
 from dse.engine.cognitionless import advance_cognitionless_tick
+from dse.engine.memory import (
+    memory_context,
+    retrieve_episodes,
+    select_eviction_candidate,
+)
 from dse.engine.reducer import apply_event
 from dse.engine.world import WorldState
 from dse.providers.base import ModelProvider
@@ -22,6 +27,8 @@ async def advance_structured_cognition_tick(
     if world.tick % cognition.interval_ticks != 0:
         return events
 
+    memory_config = manifest.agents.memory
+
     for agent_id in sorted(world.agents):
         agent = world.agents[agent_id]
 
@@ -29,6 +36,26 @@ async def advance_structured_cognition_tick(
             continue
         if agent.resources.model_calls_remaining <= 0:
             continue
+
+        context = {
+            "lifecycle_state": agent.lifecycle_state.value,
+            "activity_units_remaining": agent.resources.activity_units_remaining,
+            "model_calls_remaining": agent.resources.model_calls_remaining,
+            "cycles_completed": agent.resources.cycles_completed,
+        }
+
+        if memory_config.enabled:
+            query_text = agent.cognition.last_reason_summary or "environment"
+            retrieved = retrieve_episodes(
+                agent,
+                query_text=query_text,
+                current_tick=world.tick,
+                limit=memory_config.retrieval_limit,
+            )
+            context["episodic_memories"] = [
+                memory_context(episode)
+                for episode in retrieved
+            ]
 
         call_id = (
             f"{world.experiment_id}:{agent_id}:{world.tick}:"
@@ -39,12 +66,7 @@ async def advance_structured_cognition_tick(
             experiment_id=world.experiment_id,
             agent_id=agent_id,
             world_tick=world.tick,
-            context={
-                "lifecycle_state": agent.lifecycle_state.value,
-                "activity_units_remaining": agent.resources.activity_units_remaining,
-                "model_calls_remaining": agent.resources.model_calls_remaining,
-                "cycles_completed": agent.resources.cycles_completed,
-            },
+            context=context,
         )
         response = await provider.generate(request)
 
@@ -74,14 +96,42 @@ async def advance_structured_cognition_tick(
                 },
             )
         )
-        events.append(
-            _emit(
-                world,
-                event_type="agent.cognition.decided",
-                actor_agent_id=agent_id,
-                payload=response.decision.model_dump(mode="json"),
-            )
+
+        cognition_event = _emit(
+            world,
+            event_type="agent.cognition.decided",
+            actor_agent_id=agent_id,
+            payload=response.decision.model_dump(mode="json"),
         )
+        events.append(cognition_event)
+
+        if memory_config.enabled:
+            memory_event = _emit(
+                world,
+                event_type="memory.episode.recorded",
+                actor_agent_id=agent_id,
+                payload={
+                    "memory_id": f"{agent_id}:{cognition_event.event_id}",
+                    "created_tick": world.tick,
+                    "source_event_id": cognition_event.event_id,
+                    "content": response.decision.reason_summary,
+                    "salience": response.decision.confidence,
+                    "decision": response.decision.decision,
+                    "focus": response.decision.focus,
+                },
+            )
+            events.append(memory_event)
+
+            while len(agent.memory.episodes) > memory_config.capacity:
+                candidate = select_eviction_candidate(agent)
+                events.append(
+                    _emit(
+                        world,
+                        event_type="memory.episode.evicted",
+                        actor_agent_id=agent_id,
+                        payload={"memory_id": candidate.memory_id},
+                    )
+                )
 
     return events
 

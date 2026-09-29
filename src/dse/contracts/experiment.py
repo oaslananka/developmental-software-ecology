@@ -41,6 +41,12 @@ class CognitionConfig(StrictModel):
     interval_ticks: int = Field(default=200, gt=0)
 
 
+class MemoryConfig(StrictModel):
+    enabled: bool = False
+    capacity: int = Field(default=32, ge=1)
+    retrieval_limit: int = Field(default=4, ge=1)
+
+
 class ModelProviderConfig(StrictModel):
     kind: Literal["fake", "opencode"] = "fake"
     model: str = Field(default="fake-cognition-v0.1", min_length=1)
@@ -52,6 +58,7 @@ class AgentConfig(StrictModel):
     initial_traits: TraitConfig
     lifecycle: LifecycleConfig = Field(default_factory=LifecycleConfig)
     cognition: CognitionConfig = Field(default_factory=CognitionConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
 
 
 class RuntimeConfig(StrictModel):

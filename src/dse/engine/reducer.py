@@ -1,4 +1,4 @@
-from dse.contracts.agent import LifecycleState
+from dse.contracts.agent import EpisodicMemory, LifecycleState
 from dse.contracts.event import WorldEvent
 from dse.engine.world import WorldState
 
@@ -95,6 +95,30 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             agent.cognition.last_decision = str(event.payload["decision"])
             agent.cognition.last_reason_summary = str(event.payload["reason_summary"])
             agent.cognition.last_confidence = float(event.payload["confidence"])
+            agent.state_version += 1
+
+        case "memory.episode.recorded":
+            agent = _agent_for_event(world, event)
+            memory = EpisodicMemory.model_validate(event.payload)
+            if any(
+                episode.memory_id == memory.memory_id
+                for episode in agent.memory.episodes
+            ):
+                raise ValueError(f"Duplicate memory ID: {memory.memory_id}")
+            agent.memory.episodes.append(memory)
+            agent.state_version += 1
+
+        case "memory.episode.evicted":
+            agent = _agent_for_event(world, event)
+            memory_id = str(event.payload["memory_id"])
+            remaining = [
+                episode
+                for episode in agent.memory.episodes
+                if episode.memory_id != memory_id
+            ]
+            if len(remaining) == len(agent.memory.episodes):
+                raise ValueError(f"Unknown memory ID: {memory_id}")
+            agent.memory.episodes = remaining
             agent.state_version += 1
 
         case _:
