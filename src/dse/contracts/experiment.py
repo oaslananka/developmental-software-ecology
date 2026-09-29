@@ -52,6 +52,11 @@ class ActionConfig(StrictModel):
     proposals_per_cycle: int = Field(default=0, ge=0)
 
 
+class ToolBrokerConfig(StrictModel):
+    enabled: bool = False
+    executions_per_cycle: int = Field(default=0, ge=0)
+
+
 class MemoryConfig(StrictModel):
     enabled: bool = False
     capacity: int = Field(default=32, ge=1)
@@ -80,6 +85,7 @@ class AgentConfig(StrictModel):
     cognition: CognitionConfig = Field(default_factory=CognitionConfig)
     goals: GoalConfig = Field(default_factory=GoalConfig)
     actions: ActionConfig = Field(default_factory=ActionConfig)
+    tool_broker: ToolBrokerConfig = Field(default_factory=ToolBrokerConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     sleep_memory: SleepMemoryConfig = Field(default_factory=SleepMemoryConfig)
 
