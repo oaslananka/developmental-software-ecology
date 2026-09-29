@@ -1,4 +1,5 @@
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -20,6 +21,8 @@ class GoalStatus(StrEnum):
 
 class ActionStatus(StrEnum):
     PROPOSED = "proposed"
+    EXECUTED = "executed"
+    REJECTED = "rejected"
 
 
 class TraitState(BaseModel):
@@ -38,6 +41,7 @@ class ResourceState(BaseModel):
     sleep_ticks_remaining: int = Field(default=0, ge=0)
     model_calls_remaining: int = Field(default=0, ge=0)
     action_proposals_remaining: int = Field(default=0, ge=0)
+    tool_executions_remaining: int = Field(default=0, ge=0)
     cycles_completed: int = Field(default=0, ge=0)
 
 
@@ -110,10 +114,29 @@ class ActionIntentRecord(BaseModel):
         return self
 
 
+class ToolExecutionRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    execution_id: str = Field(min_length=1)
+    action_id: str = Field(min_length=1)
+    created_tick: int = Field(ge=0)
+    executor: str = Field(pattern="^deterministic-fake$")
+    success: bool
+    result_type: str = Field(
+        pattern=(
+            "^(workspace_inspection|artifact_draft_preview|validation_report)$"
+        )
+    )
+    summary: str = Field(min_length=1, max_length=320)
+    result_data: dict[str, Any]
+    result_hash: str = Field(min_length=64, max_length=64)
+
+
 class ActionState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     proposals: list[ActionIntentRecord] = Field(default_factory=list)
+    executions: list[ToolExecutionRecord] = Field(default_factory=list)
 
 
 class EpisodicMemory(BaseModel):

@@ -58,6 +58,26 @@ async def advance_structured_cognition_tick(
         context["action_proposals_remaining"] = (
             agent.resources.action_proposals_remaining
         )
+        context["tool_broker_enabled"] = manifest.agents.tool_broker.enabled
+        context["tool_executions_remaining"] = (
+            agent.resources.tool_executions_remaining
+        )
+
+        if manifest.agents.tool_broker.enabled:
+            context["tool_results"] = [
+                {
+                    "execution_id": execution.execution_id,
+                    "action_id": execution.action_id,
+                    "created_tick": execution.created_tick,
+                    "executor": execution.executor,
+                    "success": execution.success,
+                    "result_type": execution.result_type,
+                    "summary": execution.summary,
+                    "result_data": execution.result_data,
+                    "result_hash": execution.result_hash,
+                }
+                for execution in agent.actions.executions[-4:]
+            ]
 
         if memory_config.enabled:
             query_text = agent.cognition.last_reason_summary or "environment"
