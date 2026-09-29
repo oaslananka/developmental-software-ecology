@@ -112,7 +112,11 @@ def test_turnover_deletes_private_state_but_preserves_public_culture() -> None:
     for agent_id, agent in world.agents.items():
         assert agent.generation == 1
         assert agent.birth_tick == 150
-        assert agent.lifecycle_state.value == "awake"
+        assert agent.lifecycle_state.value == "idle"
+        assert agent.resources.activity_units_remaining == 399
+        assert agent.resources.model_calls_remaining == 7
+        assert agent.resources.action_proposals_remaining == 4
+        assert agent.resources.forge_operations_remaining == 4
         assert agent.cognition.calls_completed == 0
         assert agent.goals.goals == []
         assert agent.actions.proposals == []
