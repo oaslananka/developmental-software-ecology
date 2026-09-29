@@ -9,6 +9,30 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class StudyDesignConfig(StrictModel):
+    enforce_condition_contract: bool = False
+    text_culture: Literal["none", "persistent", "docs_only"] = "none"
+    artifact_culture: Literal["none", "executable"] = "none"
+    social_channel: Literal[
+        "none",
+        "limited",
+        "direct",
+        "issues_pr_messages",
+        "isolated",
+    ] = "none"
+    ril_control: bool = False
+    compute_match_group: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=120,
+    )
+    ril_topology: Literal[
+        "not_applicable",
+        "single_isolated",
+        "independent_isolated",
+    ] = "not_applicable"
+
+
 class ExperimentIdentity(StrictModel):
     id: str = Field(min_length=1)
     name: str = Field(min_length=1)
@@ -169,10 +193,19 @@ class RuntimeConfig(StrictModel):
 
 class ExperimentManifest(StrictModel):
     schema_version: Literal["0.1"]
+    study: StudyDesignConfig = Field(default_factory=StudyDesignConfig)
     experiment: ExperimentIdentity
     world: WorldConfig
     agents: AgentConfig
     runtime: RuntimeConfig
+
+    @model_validator(mode="after")
+    def validate_condition_contract(self):
+        if self.study.enforce_condition_contract:
+            from dse.experiments.conditions import validate_condition_manifest
+
+            validate_condition_manifest(self)
+        return self
 
 
 def load_manifest(path: str | Path) -> ExperimentManifest:
