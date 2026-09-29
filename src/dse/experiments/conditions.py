@@ -325,6 +325,7 @@ def _is_valid_hardened_evaluation_evidence(
             report.policy_hash == expected_policy_hash,
             report.backend == evaluation.sandbox_policy.backend,
             report.runner_kind == "external-hardened",
+            report.attestation_evidence_kind == "runtime-measured",
             report.worker_build_sha256 != "0" * 64,
             report.runtime_build_sha256 != "0" * 64,
             report.total_cases <= evaluation.max_cases,
