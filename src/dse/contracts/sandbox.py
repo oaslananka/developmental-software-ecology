@@ -58,6 +58,7 @@ class SandboxCheck(StrictModel):
 
 class SandboxAttestation(StrictModel):
     attestation_id: str = Field(min_length=1, max_length=160)
+    evidence_kind: Literal["test-fixture", "runtime-measured"] = "test-fixture"
     backend: str = Field(
         min_length=1,
         max_length=64,
