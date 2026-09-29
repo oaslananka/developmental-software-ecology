@@ -18,6 +18,9 @@ agents:
     persistence: 0.5
     social_bias: 0.5
     risk_bias: 0.5
+  lifecycle:
+    active_ticks_per_cycle: 960
+    sleep_ticks_per_cycle: 480
 
 runtime:
   llm_enabled: false

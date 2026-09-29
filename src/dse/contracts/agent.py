@@ -21,6 +21,14 @@ class TraitState(BaseModel):
     risk_bias: float = Field(ge=0.0, le=1.0)
 
 
+class ResourceState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    activity_units_remaining: int = Field(ge=0)
+    sleep_ticks_remaining: int = Field(default=0, ge=0)
+    cycles_completed: int = Field(default=0, ge=0)
+
+
 class AgentState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -30,5 +38,6 @@ class AgentState(BaseModel):
     birth_tick: int = Field(default=0, ge=0)
     lifecycle_state: LifecycleState = LifecycleState.BORN
     traits: TraitState
+    resources: ResourceState
     last_active_tick: int = Field(default=0, ge=0)
     state_version: int = Field(default=0, ge=0)
