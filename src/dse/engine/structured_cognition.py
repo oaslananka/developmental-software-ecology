@@ -59,6 +59,14 @@ async def advance_structured_cognition_tick(
             agent.resources.action_proposals_remaining
         )
         context["tool_broker_enabled"] = manifest.agents.tool_broker.enabled
+        context["forge_action_enabled"] = (
+            action_config.enabled
+            and manifest.runtime.forge_enabled
+            and manifest.runtime.forge.enabled
+        )
+        context["forge_operations_remaining"] = (
+            agent.resources.forge_operations_remaining
+        )
         context["tool_executions_remaining"] = (
             agent.resources.tool_executions_remaining
         )
@@ -77,6 +85,27 @@ async def advance_structured_cognition_tick(
                     "result_hash": execution.result_hash,
                 }
                 for execution in agent.actions.executions[-4:]
+            ]
+
+        if manifest.runtime.forge_enabled and manifest.runtime.forge.enabled:
+            context["forge_world"] = {
+                "repositories": [
+                    {
+                        "repo_id": repository.repo_id,
+                        "name": repository.name,
+                        "head_commit_id": repository.head_commit_id,
+                        "artifact_count": repository.artifact_count,
+                        "path_heads": dict(sorted(repository.path_heads.items())),
+                    }
+                    for repository in sorted(
+                        world.forge.repositories.values(),
+                        key=lambda item: item.repo_id,
+                    )[:16]
+                ]
+            }
+            context["forge_results"] = [
+                result.model_dump(mode="json")
+                for result in agent.actions.forge_results[-4:]
             ]
 
         if memory_config.enabled:
@@ -106,7 +135,7 @@ async def advance_structured_cognition_tick(
         )
         response = await provider.generate(request)
 
-        _validate_schema_decision(request.response_schema, response.decision.decision)
+        _validate_schema_decision(request.response_schema, response.decision)
 
         events.append(
             _emit(
@@ -216,6 +245,12 @@ async def advance_structured_cognition_ticks(
 
 
 def _response_schema(manifest: ExperimentManifest) -> str:
+    if (
+        manifest.agents.actions.enabled
+        and manifest.runtime.forge_enabled
+        and manifest.runtime.forge.enabled
+    ):
+        return "CognitionDecision/v0.5"
     if manifest.agents.actions.enabled:
         return "CognitionDecision/v0.4"
 
@@ -227,8 +262,10 @@ def _response_schema(manifest: ExperimentManifest) -> str:
     return "CognitionDecision/v0.2"
 
 
-def _validate_schema_decision(schema: str, decision: str) -> None:
-    if schema == "CognitionDecision/v0.1" and decision in {
+def _validate_schema_decision(schema: str, decision) -> None:
+    decision_name = decision.decision
+
+    if schema == "CognitionDecision/v0.1" and decision_name in {
         "propose_goal",
         "update_goal",
         "complete_goal",
@@ -237,7 +274,7 @@ def _validate_schema_decision(schema: str, decision: str) -> None:
     }:
         raise ValueError("v0.1 cognition cannot emit goal/action decisions")
 
-    if schema == "CognitionDecision/v0.2" and decision in {
+    if schema == "CognitionDecision/v0.2" and decision_name in {
         "update_goal",
         "complete_goal",
         "abandon_goal",
@@ -245,8 +282,16 @@ def _validate_schema_decision(schema: str, decision: str) -> None:
     }:
         raise ValueError("v0.2 cognition cannot emit lifecycle/action decisions")
 
-    if schema == "CognitionDecision/v0.3" and decision == "propose_action":
+    if schema == "CognitionDecision/v0.3" and decision_name == "propose_action":
         raise ValueError("v0.3 cognition cannot emit action proposals")
+
+    if (
+        schema == "CognitionDecision/v0.4"
+        and decision_name == "propose_action"
+        and decision.action is not None
+        and decision.action.kind.startswith("forge_")
+    ):
+        raise ValueError("v0.4 cognition cannot emit forge action proposals")
 
 
 def _emit_goal_events(
