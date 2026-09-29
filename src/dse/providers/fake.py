@@ -272,7 +272,6 @@ def _culture_v06_decision(
     forge_enabled = bool(context.get("forge_action_enabled", False))
     forge_budget = int(context.get("forge_operations_remaining", 0) or 0)
     forge_results = list(context.get("forge_results") or [])
-    repositories = list((context.get("forge_world") or {}).get("repositories") or [])
 
     text_enabled = bool(context.get("text_culture_enabled", False))
     text_budget = int(context.get("text_operations_remaining", 0) or 0)
