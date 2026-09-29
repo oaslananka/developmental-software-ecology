@@ -298,15 +298,24 @@ class ExperimentManifest(StrictModel):
         profile = value.get("evaluation_profile", "none")
         if profile == "none":
             return value
-        if "evaluation" in value:
-            raise ValueError(
-                "evaluation_profile cannot be combined with explicit evaluation"
-            )
         if profile != "v0_1-hidden-functional-suite":
             return value
 
+        expected = EvaluationConfig.model_validate(
+            v0_1_hidden_evaluation_payload()
+        ).model_dump(mode="json")
+        if "evaluation" in value:
+            observed = EvaluationConfig.model_validate(
+                value["evaluation"]
+            ).model_dump(mode="json")
+            if observed != expected:
+                raise ValueError(
+                    "evaluation does not match evaluation_profile"
+                )
+            return value
+
         resolved = dict(value)
-        resolved["evaluation"] = v0_1_hidden_evaluation_payload()
+        resolved["evaluation"] = expected
         return resolved
 
     @model_validator(mode="after")
