@@ -1,0 +1,54 @@
+from pathlib import Path
+from typing import Literal
+
+import yaml
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class ExperimentIdentity(StrictModel):
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    condition: Literal["P", "T", "E", "ES", "RIL"]
+    seed: int
+
+
+class WorldConfig(StrictModel):
+    agent_count: int = Field(ge=1)
+    max_world_ticks: int = Field(gt=0)
+    tick_duration_sim_seconds: int = Field(gt=0)
+    snapshot_interval_ticks: int = Field(gt=0)
+
+
+class TraitConfig(StrictModel):
+    exploration_bias: float = Field(ge=0.0, le=1.0)
+    persistence: float = Field(ge=0.0, le=1.0)
+    social_bias: float = Field(ge=0.0, le=1.0)
+    risk_bias: float = Field(ge=0.0, le=1.0)
+
+
+class AgentConfig(StrictModel):
+    initial_traits: TraitConfig
+
+
+class RuntimeConfig(StrictModel):
+    llm_enabled: bool = False
+    forge_enabled: bool = False
+    sandbox_enabled: bool = False
+    web_enabled: bool = False
+
+
+class ExperimentManifest(StrictModel):
+    schema_version: Literal["0.1"]
+    experiment: ExperimentIdentity
+    world: WorldConfig
+    agents: AgentConfig
+    runtime: RuntimeConfig
+
+
+def load_manifest(path: str | Path) -> ExperimentManifest:
+    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    return ExperimentManifest.model_validate(raw)
