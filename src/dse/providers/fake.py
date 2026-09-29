@@ -1,5 +1,6 @@
 from dse.contracts.model import (
     CognitionDecision,
+    GoalProposal,
     ModelRequest,
     ModelResponse,
     ModelUsage,
@@ -19,17 +20,48 @@ class DeterministicFakeProvider:
         self.call_count += 1
         request_hash = state_hash(request.model_dump(mode="json"))
 
-        selector = int(request_hash[:8], 16) % 2
-        decision = CognitionDecision(
-            decision="observe" if selector else "idle",
-            reason_summary=(
-                "Inspect the current environment at the next permitted opportunity."
-                if selector
-                else "No higher-value cognition is required at this trigger."
-            ),
-            confidence=0.75,
-            focus="environment" if selector else None,
+        goal_generation_enabled = bool(
+            request.context.get("goal_generation_enabled", False)
         )
+        active_goal = request.context.get("active_goal")
+
+        if (
+            request.response_schema == "CognitionDecision/v0.2"
+            and goal_generation_enabled
+            and active_goal is None
+        ):
+            goal = GoalProposal(
+                title="Investigate recurring environmental patterns",
+                description=(
+                    "Develop a persistent line of inquiry around recurring signals "
+                    "in the current environment and use later observations to refine it."
+                ),
+                motivation_summary=(
+                    "A stable self-chosen objective provides continuity across cognition cycles."
+                ),
+                expected_value=0.75,
+                estimated_cost=0.45,
+                confidence=0.8,
+            )
+            decision = CognitionDecision(
+                decision="propose_goal",
+                reason_summary="A durable self-generated objective is currently absent.",
+                confidence=0.8,
+                focus="environment",
+                goal=goal,
+            )
+        else:
+            selector = int(request_hash[:8], 16) % 2
+            decision = CognitionDecision(
+                decision="observe" if selector else "idle",
+                reason_summary=(
+                    "Inspect the current environment at the next permitted opportunity."
+                    if selector
+                    else "No higher-value cognition is required at this trigger."
+                ),
+                confidence=0.75,
+                focus="environment" if selector else None,
+            )
 
         response_material = {
             "call_id": request.call_id,
