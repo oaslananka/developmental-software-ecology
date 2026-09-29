@@ -32,6 +32,7 @@ def process_scheduled_turnovers(
             "actions": len(agent.actions.proposals),
             "tool_executions": len(agent.actions.executions),
             "forge_results": len(agent.actions.forge_results),
+            "culture_results": len(agent.actions.culture_results),
             "episodic_memories": len(agent.memory.episodes),
         }
 
