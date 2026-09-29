@@ -41,6 +41,13 @@ class CognitionConfig(StrictModel):
     interval_ticks: int = Field(default=200, gt=0)
 
 
+class ModelProviderConfig(StrictModel):
+    kind: Literal["fake", "opencode"] = "fake"
+    model: str = Field(default="fake-cognition-v0.1", min_length=1)
+    base_url: str | None = None
+    timeout_seconds: float = Field(default=30.0, gt=0)
+
+
 class AgentConfig(StrictModel):
     initial_traits: TraitConfig
     lifecycle: LifecycleConfig = Field(default_factory=LifecycleConfig)
@@ -52,6 +59,7 @@ class RuntimeConfig(StrictModel):
     forge_enabled: bool = False
     sandbox_enabled: bool = False
     web_enabled: bool = False
+    model_provider: ModelProviderConfig = Field(default_factory=ModelProviderConfig)
 
 
 class ExperimentManifest(StrictModel):
