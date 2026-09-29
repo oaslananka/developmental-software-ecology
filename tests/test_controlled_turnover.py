@@ -231,11 +231,14 @@ def test_turnover_events_report_private_counts_without_private_content() -> None
             "actions": 4,
             "tool_executions": 0,
             "forge_results": 4,
+            "culture_results": 0,
             "episodic_memories": 7,
         }
         assert "memory" not in event.payload
         assert "goals" not in event.payload
         assert len(event.payload["public_forge_hash"]) == 64
+        assert len(event.payload["text_culture_hash"]) == 64
+        assert len(event.payload["social_world_hash"]) == 64
 
 
 def test_turnover_event_stream_replays_exactly() -> None:
