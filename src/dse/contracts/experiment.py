@@ -47,6 +47,15 @@ class MemoryConfig(StrictModel):
     retrieval_limit: int = Field(default=4, ge=1)
 
 
+class SleepMemoryConfig(StrictModel):
+    enabled: bool = False
+    strengthen_top_k: int = Field(default=0, ge=0)
+    salience_boost: float = Field(default=0.0, ge=0.0, le=1.0)
+    forget_below_salience: float = Field(default=0.0, ge=0.0, le=1.0)
+    forget_older_than_ticks: int = Field(default=0, ge=0)
+    max_forget_per_sleep: int = Field(default=0, ge=0)
+
+
 class ModelProviderConfig(StrictModel):
     kind: Literal["fake", "opencode"] = "fake"
     model: str = Field(default="fake-cognition-v0.1", min_length=1)
@@ -59,6 +68,7 @@ class AgentConfig(StrictModel):
     lifecycle: LifecycleConfig = Field(default_factory=LifecycleConfig)
     cognition: CognitionConfig = Field(default_factory=CognitionConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    sleep_memory: SleepMemoryConfig = Field(default_factory=SleepMemoryConfig)
 
 
 class RuntimeConfig(StrictModel):

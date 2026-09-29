@@ -110,15 +110,30 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
 
         case "memory.episode.evicted":
             agent = _agent_for_event(world, event)
+            _remove_memory(agent, str(event.payload["memory_id"]))
+            agent.state_version += 1
+
+        case "memory.episode.consolidated":
+            agent = _agent_for_event(world, event)
             memory_id = str(event.payload["memory_id"])
-            remaining = [
-                episode
-                for episode in agent.memory.episodes
-                if episode.memory_id != memory_id
-            ]
-            if len(remaining) == len(agent.memory.episodes):
-                raise ValueError(f"Unknown memory ID: {memory_id}")
-            agent.memory.episodes = remaining
+            episode = _find_memory(agent, memory_id)
+
+            old_salience = float(event.payload["old_salience"])
+            new_salience = float(event.payload["new_salience"])
+            if abs(episode.salience - old_salience) > 1e-9:
+                raise ValueError(
+                    f"Consolidation old_salience mismatch for {memory_id}: "
+                    f"state={episode.salience}, event={old_salience}"
+                )
+            if not 0.0 <= new_salience <= 1.0:
+                raise ValueError("Consolidated salience must remain within 0..1")
+
+            episode.salience = new_salience
+            agent.state_version += 1
+
+        case "memory.episode.forgotten":
+            agent = _agent_for_event(world, event)
+            _remove_memory(agent, str(event.payload["memory_id"]))
             agent.state_version += 1
 
         case _:
@@ -134,3 +149,21 @@ def _agent_for_event(world: WorldState, event: WorldEvent):
         return world.agents[event.actor_agent_id]
     except KeyError as error:
         raise ValueError(f"Unknown agent: {event.actor_agent_id}") from error
+
+
+def _find_memory(agent, memory_id: str) -> EpisodicMemory:
+    for episode in agent.memory.episodes:
+        if episode.memory_id == memory_id:
+            return episode
+    raise ValueError(f"Unknown memory ID: {memory_id}")
+
+
+def _remove_memory(agent, memory_id: str) -> None:
+    remaining = [
+        episode
+        for episode in agent.memory.episodes
+        if episode.memory_id != memory_id
+    ]
+    if len(remaining) == len(agent.memory.episodes):
+        raise ValueError(f"Unknown memory ID: {memory_id}")
+    agent.memory.episodes = remaining

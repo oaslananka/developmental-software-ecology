@@ -61,6 +61,58 @@ def select_eviction_candidate(agent: AgentState) -> EpisodicMemory:
     )
 
 
+def select_consolidation_candidates(
+    agent: AgentState,
+    *,
+    limit: int,
+) -> list[EpisodicMemory]:
+    if limit <= 0:
+        return []
+
+    return sorted(
+        agent.memory.episodes,
+        key=lambda episode: (
+            -episode.salience,
+            -episode.created_tick,
+            episode.memory_id,
+        ),
+    )[:limit]
+
+
+def select_forgetting_candidates(
+    agent: AgentState,
+    *,
+    current_tick: int,
+    below_salience: float,
+    older_than_ticks: int,
+    limit: int,
+    excluded_memory_ids: set[str] | None = None,
+) -> list[EpisodicMemory]:
+    if limit <= 0:
+        return []
+
+    excluded = excluded_memory_ids or set()
+    candidates = [
+        episode
+        for episode in agent.memory.episodes
+        if episode.memory_id not in excluded
+        and episode.salience < below_salience
+        and (current_tick - episode.created_tick) >= older_than_ticks
+    ]
+    candidates.sort(
+        key=lambda episode: (
+            episode.salience,
+            episode.created_tick,
+            episode.memory_id,
+        )
+    )
+    return candidates[:limit]
+
+
+def boosted_salience(current: float, boost: float) -> float:
+    return min(1.0, round(current + boost, 6))
+
+
 def memory_context(episode: EpisodicMemory) -> dict[str, object]:
     return {
         "memory_id": episode.memory_id,
