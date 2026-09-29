@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 
 from dse.contracts.agent import AgentState, ResourceState, TraitState
 from dse.contracts.experiment import ExperimentManifest
+from dse.contracts.forge import ForgeWorldState
 
 
 @dataclass
@@ -10,6 +11,7 @@ class WorldState:
     tick: int = 0
     last_sequence_number: int = 0
     agents: dict[str, AgentState] = field(default_factory=dict)
+    forge: ForgeWorldState = field(default_factory=ForgeWorldState)
 
 
 def create_world(manifest: ExperimentManifest) -> WorldState:

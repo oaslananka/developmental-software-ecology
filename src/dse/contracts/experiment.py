@@ -61,6 +61,20 @@ class ToolBrokerConfig(StrictModel):
     ] = "deterministic-fake"
 
 
+class ForgeConfig(StrictModel):
+    enabled: bool = False
+    provider: Literal["deterministic-memory"] = "deterministic-memory"
+    default_branch: str = Field(
+        default="main",
+        min_length=1,
+        max_length=80,
+        pattern="^[A-Za-z0-9._/-]+$",
+    )
+    max_artifact_bytes: int = Field(default=16_384, ge=1, le=65_536)
+    max_repositories: int = Field(default=32, ge=1, le=256)
+    max_artifacts_per_repository: int = Field(default=256, ge=1, le=4096)
+
+
 class SandboxPolicyConfig(StrictModel):
     backend: Literal["none", "external-hardened"] = "none"
     network_enabled: Literal[False] = False
@@ -113,6 +127,7 @@ class RuntimeConfig(StrictModel):
     forge_enabled: bool = False
     sandbox_enabled: bool = False
     web_enabled: bool = False
+    forge: ForgeConfig = Field(default_factory=ForgeConfig)
     sandbox_policy: SandboxPolicyConfig = Field(
         default_factory=SandboxPolicyConfig
     )

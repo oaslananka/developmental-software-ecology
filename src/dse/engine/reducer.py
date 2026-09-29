@@ -8,6 +8,11 @@ from dse.contracts.agent import (
     ToolExecutionRecord,
 )
 from dse.contracts.event import WorldEvent
+from dse.contracts.forge import (
+    ForgeArtifactRecord,
+    ForgeCommitRecord,
+    ForgeRepositoryRecord,
+)
 from dse.engine.world import WorldState
 
 
@@ -255,6 +260,112 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
         case "sandbox.execution.result_rejected":
             pass
 
+        case "forge.repository.created":
+            agent = _agent_for_event(world, event)
+            repository = ForgeRepositoryRecord.model_validate(
+                event.payload["repository"]
+            )
+
+            if repository.creator_agent_id != agent.agent_id:
+                raise ValueError("Forge repository creator does not match actor")
+            if repository.creator_generation != agent.generation:
+                raise ValueError("Forge repository creator generation mismatch")
+            if repository.created_tick != event.world_tick:
+                raise ValueError("Forge repository created_tick mismatch")
+            if repository.head_commit_id is not None:
+                raise ValueError("New forge repository must have no head commit")
+            if repository.commit_count != 0 or repository.artifact_count != 0:
+                raise ValueError("New forge repository counters must start at zero")
+            if repository.path_heads:
+                raise ValueError("New forge repository must have no path heads")
+            if repository.repo_id in world.forge.repositories:
+                raise ValueError(f"Duplicate forge repository ID: {repository.repo_id}")
+            if any(
+                existing.name == repository.name
+                for existing in world.forge.repositories.values()
+            ):
+                raise ValueError(f"Duplicate forge repository name: {repository.name}")
+
+            world.forge.repositories[repository.repo_id] = repository
+
+        case "forge.artifact.committed":
+            agent = _agent_for_event(world, event)
+            commit = ForgeCommitRecord.model_validate(event.payload["commit"])
+            artifact = ForgeArtifactRecord.model_validate(event.payload["artifact"])
+
+            try:
+                repository = world.forge.repositories[commit.repo_id]
+            except KeyError as error:
+                raise ValueError(
+                    f"Unknown forge repository: {commit.repo_id}"
+                ) from error
+
+            if artifact.repo_id != repository.repo_id:
+                raise ValueError("Artifact repository does not match commit repository")
+            if artifact.commit_id != commit.commit_id:
+                raise ValueError("Artifact commit_id does not match commit")
+            if commit.artifact_ids != [artifact.artifact_id]:
+                raise ValueError("M11 commits must contain exactly the committed artifact")
+            if commit.parent_commit_id != repository.head_commit_id:
+                raise ValueError(
+                    "Forge commit parent does not match current repository head"
+                )
+            if commit.commit_id in world.forge.commits:
+                raise ValueError(f"Duplicate forge commit ID: {commit.commit_id}")
+            if artifact.artifact_id in world.forge.artifacts:
+                raise ValueError(f"Duplicate forge artifact ID: {artifact.artifact_id}")
+
+            if commit.author_agent_id != agent.agent_id:
+                raise ValueError("Forge commit author does not match actor")
+            if artifact.creator_agent_id != agent.agent_id:
+                raise ValueError("Forge artifact creator does not match actor")
+            if commit.author_generation != agent.generation:
+                raise ValueError("Forge commit author generation mismatch")
+            if artifact.creator_generation != agent.generation:
+                raise ValueError("Forge artifact creator generation mismatch")
+            if commit.created_tick != event.world_tick:
+                raise ValueError("Forge commit created_tick mismatch")
+            if artifact.created_tick != event.world_tick:
+                raise ValueError("Forge artifact created_tick mismatch")
+            if artifact.source_event_id != event.event_id:
+                raise ValueError("Forge artifact source_event_id mismatch")
+
+            encoded = artifact.content.encode("utf-8")
+            if artifact.content_bytes != len(encoded):
+                raise ValueError("Forge artifact content byte count mismatch")
+            if artifact.content_sha256 != state_hash_bytes(encoded):
+                raise ValueError("Forge artifact content hash mismatch")
+
+            previous = repository.path_heads.get(artifact.path)
+            if artifact.previous_artifact_id != previous:
+                raise ValueError(
+                    "Forge artifact previous revision does not match path head"
+                )
+            if previous is not None and previous not in artifact.parent_artifact_ids:
+                raise ValueError(
+                    "Forge revision lineage must include the previous artifact"
+                )
+
+            if len(artifact.parent_artifact_ids) != len(
+                set(artifact.parent_artifact_ids)
+            ):
+                raise ValueError("Forge artifact lineage contains duplicate parents")
+            for parent_artifact_id in artifact.parent_artifact_ids:
+                if parent_artifact_id not in world.forge.artifacts:
+                    raise ValueError(
+                        f"Unknown parent forge artifact: {parent_artifact_id}"
+                    )
+
+            world.forge.commits[commit.commit_id] = commit
+            world.forge.artifacts[artifact.artifact_id] = artifact
+            repository.head_commit_id = commit.commit_id
+            repository.commit_count += 1
+            repository.artifact_count += 1
+            repository.path_heads[artifact.path] = artifact.artifact_id
+
+        case "forge.operation.rejected":
+            _agent_for_event(world, event)
+
         case "memory.episode.recorded":
             agent = _agent_for_event(world, event)
             memory = EpisodicMemory.model_validate(event.payload)
@@ -333,6 +444,12 @@ def _proposed_action(agent, action_id: str) -> ActionIntentRecord:
                 )
             return action
     raise ValueError(f"Unknown action ID: {action_id}")
+
+
+def state_hash_bytes(value: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(value).hexdigest()
 
 
 def _find_memory(agent, memory_id: str) -> EpisodicMemory:
