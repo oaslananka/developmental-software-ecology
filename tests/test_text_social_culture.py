@@ -212,8 +212,7 @@ def test_es_generation_one_uses_all_m15_treatment_surfaces() -> None:
     report = assess_condition_support(manifest)
     assert report.research_runtime_ready is False
     assert report.missing_surfaces == [
-        "hardened_artifact_execution_runtime",
-        "hidden_functional_evaluator",
+        "attested_hardened_evaluator_runtime",
     ]
 
     for agent_id in world.agents:

@@ -1,4 +1,5 @@
 schema_version: "0.1"
+evaluation_profile: "v0_1-hidden-functional-suite"
 
 study:
   enforce_condition_contract: true

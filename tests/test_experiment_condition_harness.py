@@ -90,6 +90,14 @@ def test_all_primary_condition_manifests_share_compute_budget() -> None:
         assert manifest.runtime.forge.operations_per_cycle == 4
         assert manifest.runtime.text_culture.operations_per_cycle == 4
         assert manifest.runtime.social.operations_per_cycle == 4
+        assert manifest.evaluation.enabled is True
+        assert manifest.evaluation.suite_id == "v0_1-hidden-functional-suite"
+        assert (
+            manifest.evaluation.suite_hash
+            == "4791850327e4f4fead67e668c6a4d7e155048653b8cabf5fdede47c31b91f8a4"
+        )
+        assert manifest.evaluation.sandbox_enabled is True
+        assert manifest.evaluation.sandbox_policy.backend == "external-hardened"
 
 
 def test_condition_contract_rejects_treatment_drift() -> None:
@@ -123,6 +131,29 @@ def test_condition_contract_rejects_treatment_drift() -> None:
     with pytest.raises(
         ValidationError,
         match="runtime.social.enabled",
+    ):
+        ExperimentManifest.model_validate(raw)
+
+
+def test_evaluation_profile_roundtrips_canonical_manifest() -> None:
+    manifest = load_manifest(CONDITION_PATHS["T"])
+
+    restored = ExperimentManifest.model_validate(
+        manifest.model_dump(mode="json")
+    )
+
+    assert restored == manifest
+    assert restored.evaluation_profile == "v0_1-hidden-functional-suite"
+
+
+def test_evaluation_profile_rejects_expanded_config_drift() -> None:
+    manifest = load_manifest(CONDITION_PATHS["E"])
+    raw = manifest.model_dump(mode="json")
+    raw["evaluation"]["sandbox_policy"]["memory_mb"] = 512
+
+    with pytest.raises(
+        ValidationError,
+        match="evaluation does not match evaluation_profile",
     ):
         ExperimentManifest.model_validate(raw)
 
@@ -169,14 +200,12 @@ def test_support_gate_reports_missing_runtime_surfaces_without_theater() -> None
 
     assert reports["E"].research_runtime_ready is False
     assert reports["E"].missing_surfaces == [
-        "hardened_artifact_execution_runtime",
-        "hidden_functional_evaluator",
+        "attested_hardened_evaluator_runtime",
     ]
 
     assert reports["ES"].research_runtime_ready is False
     assert reports["ES"].missing_surfaces == [
-        "hardened_artifact_execution_runtime",
-        "hidden_functional_evaluator",
+        "attested_hardened_evaluator_runtime",
     ]
 
 

@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, DateTime, ForeignKey, MetaData, Table, Text
+from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, MetaData, Table, Text
 from sqlalchemy import Column
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
@@ -50,4 +50,43 @@ world_snapshots = Table(
     Column("state", JSONB, nullable=False),
     Column("state_hash", Text, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+
+functional_evaluations = Table(
+    "functional_evaluations",
+    metadata,
+    Column(
+        "experiment_id",
+        Text,
+        ForeignKey("experiments.experiment_id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("evaluation_id", Text, primary_key=True),
+    Column("condition", Text, nullable=False),
+    Column("world_tick", BigInteger, nullable=False),
+    Column("world_sequence", BigInteger, nullable=False),
+    Column("world_snapshot_hash", Text, nullable=False),
+    Column("culture_snapshot_hash", Text, nullable=False),
+    Column("suite_id", Text, nullable=False),
+    Column("suite_hash", Text, nullable=False),
+    Column("artifact_bindings", JSONB, nullable=False),
+    Column("passed_cases", BigInteger, nullable=False),
+    Column("failed_cases", BigInteger, nullable=False),
+    Column("total_cases", BigInteger, nullable=False),
+    Column("functional_score", Float, nullable=False),
+    Column("duration_ms", BigInteger, nullable=False),
+    Column("policy_hash", Text, nullable=False),
+    Column("attestation_id", Text, nullable=False),
+    Column("backend", Text, nullable=False),
+    Column("backend_version", Text, nullable=False),
+    Column("runner_kind", Text, nullable=False),
+    Column("runner_version", Text, nullable=False),
+    Column("result_hash", Text, nullable=False),
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    ),
 )

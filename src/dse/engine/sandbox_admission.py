@@ -25,34 +25,37 @@ REQUIRED_SANDBOX_CHECKS = (
 )
 
 
+def sandbox_policy_hash_for(policy) -> str:
+    return state_hash(policy.model_dump(mode="json"))
+
+
 def sandbox_policy_hash(manifest: ExperimentManifest) -> str:
-    return state_hash(
-        manifest.runtime.sandbox_policy.model_dump(mode="json")
-    )
+    return sandbox_policy_hash_for(manifest.runtime.sandbox_policy)
 
 
 def sandbox_plan_hash(plan: SandboxExecutionPlan) -> str:
     return state_hash(plan.model_dump(mode="json"))
 
 
-def evaluate_sandbox_admission(
-    manifest: ExperimentManifest,
-    plan: SandboxExecutionPlan,
+def evaluate_sandbox_runtime_evidence(
+    *,
+    enabled: bool,
+    policy,
+    plan_id: str,
+    action_id: str,
+    plan_hash: str,
     attestation: SandboxAttestation | None,
 ) -> SandboxAdmissionDecision:
-    policy = manifest.runtime.sandbox_policy
-    policy_hash = sandbox_policy_hash(manifest)
-    plan_hash = sandbox_plan_hash(plan)
-
+    policy_hash = sandbox_policy_hash_for(policy)
     base = {
-        "admission_id": f"{plan.plan_id}:admission",
-        "plan_id": plan.plan_id,
-        "action_id": plan.action_id,
+        "admission_id": f"{plan_id}:admission",
+        "plan_id": plan_id,
+        "action_id": action_id,
         "policy_hash": policy_hash,
         "plan_hash": plan_hash,
     }
 
-    if not manifest.runtime.sandbox_enabled:
+    if not enabled:
         return SandboxAdmissionDecision(
             **base,
             admitted=False,
@@ -130,6 +133,21 @@ def evaluate_sandbox_admission(
         **attestation_fields,
         admitted=True,
         reason="admitted",
+    )
+
+
+def evaluate_sandbox_admission(
+    manifest: ExperimentManifest,
+    plan: SandboxExecutionPlan,
+    attestation: SandboxAttestation | None,
+) -> SandboxAdmissionDecision:
+    return evaluate_sandbox_runtime_evidence(
+        enabled=manifest.runtime.sandbox_enabled,
+        policy=manifest.runtime.sandbox_policy,
+        plan_id=plan.plan_id,
+        action_id=plan.action_id,
+        plan_hash=sandbox_plan_hash(plan),
+        attestation=attestation,
     )
 
 

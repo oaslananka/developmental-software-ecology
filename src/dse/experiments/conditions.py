@@ -3,7 +3,10 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
+    from dse.contracts.evaluation import FunctionalEvaluationReport
     from dse.contracts.experiment import ExperimentManifest
+
+from dse.engine.hashing import state_hash
 
 
 class StrictModel(BaseModel):
@@ -167,6 +170,11 @@ def validate_condition_manifest(manifest: "ExperimentManifest") -> None:
             "condition-contract manifests require study.compute_match_group"
         )
 
+    if manifest.evaluation_profile != "v0_1-hidden-functional-suite":
+        raise ValueError(
+            "condition-contract manifests require the V0.1 evaluation profile"
+        )
+
     if profile.ril_control:
         if study.ril_topology == "not_applicable":
             raise ValueError("RIL condition requires an explicit isolated topology")
@@ -225,9 +233,16 @@ def assess_condition_support(
         )
 
     if profile.artifact_culture == "executable":
-        if not manifest.runtime.sandbox_enabled:
+        evaluation = manifest.evaluation
+        if not evaluation.enabled:
+            missing.append("hidden_functional_evaluator")
+        elif (
+            not evaluation.sandbox_enabled
+            or evaluation.sandbox_policy.backend == "none"
+        ):
             missing.append("hardened_artifact_execution_runtime")
-        missing.append("hidden_functional_evaluator")
+        else:
+            missing.append("attested_hardened_evaluator_runtime")
 
     if profile.ril_control:
         notes.append(
@@ -240,4 +255,77 @@ def assess_condition_support(
         research_runtime_ready=not missing,
         missing_surfaces=sorted(set(missing)),
         notes=notes,
+    )
+
+
+
+def assess_condition_runtime_readiness(
+    manifest: "ExperimentManifest",
+    evaluation_report: "FunctionalEvaluationReport | None",
+) -> ConditionSupportReport:
+    static = assess_condition_support(manifest)
+    profile = expected_condition_profile(manifest.experiment.condition)
+    if profile.artifact_culture != "executable":
+        return static
+
+    missing = list(static.missing_surfaces)
+    notes = list(static.notes)
+    evidence_gate = "attested_hardened_evaluator_runtime"
+
+    if (
+        evidence_gate in missing
+        and _is_valid_hardened_evaluation_evidence(
+            manifest,
+            evaluation_report,
+        )
+    ):
+        missing.remove(evidence_gate)
+        notes.append(
+            "A completed external-hardened hidden evaluation matches the "
+            "manifest-pinned suite and sandbox policy."
+        )
+
+    return ConditionSupportReport(
+        condition=static.condition,
+        contract_valid=static.contract_valid,
+        research_runtime_ready=not missing,
+        missing_surfaces=sorted(set(missing)),
+        notes=notes,
+    )
+
+
+def _is_valid_hardened_evaluation_evidence(
+    manifest: "ExperimentManifest",
+    report: "FunctionalEvaluationReport | None",
+) -> bool:
+    if report is None:
+        return False
+
+    evaluation = manifest.evaluation
+    if (
+        not evaluation.enabled
+        or evaluation.suite_id is None
+        or evaluation.suite_hash is None
+    ):
+        return False
+
+    expected_policy_hash = state_hash(
+        evaluation.sandbox_policy.model_dump(mode="json")
+    )
+    expected_result_hash = state_hash(
+        report.model_dump(mode="json", exclude={"result_hash"})
+    )
+
+    return all(
+        (
+            report.experiment_id == manifest.experiment.id,
+            report.condition == manifest.experiment.condition,
+            report.suite_id == evaluation.suite_id,
+            report.suite_hash == evaluation.suite_hash,
+            report.policy_hash == expected_policy_hash,
+            report.backend == evaluation.sandbox_policy.backend,
+            report.runner_kind == "external-hardened",
+            report.total_cases <= evaluation.max_cases,
+            report.result_hash == expected_result_hash,
+        )
     )
