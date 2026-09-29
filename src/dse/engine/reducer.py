@@ -246,6 +246,15 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
         case "sandbox.admission.evaluated":
             pass
 
+        case "sandbox.execution.dispatched":
+            pass
+
+        case "sandbox.execution.completed":
+            pass
+
+        case "sandbox.execution.result_rejected":
+            pass
+
         case "memory.episode.recorded":
             agent = _agent_for_event(world, event)
             memory = EpisodicMemory.model_validate(event.payload)
