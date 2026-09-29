@@ -1,8 +1,17 @@
-"""Hidden functional evaluator protocol.
-
-No production hidden-test execution backend is implemented here.
-"""
+"""Hidden functional evaluator interfaces and external transport."""
 
 from dse.evaluator.base import HiddenEvaluatorRunner
+from dse.evaluator.http import (
+    ExternalEvaluatorClient,
+    ExternalEvaluatorProtocolError,
+    ExternalEvaluatorTransportError,
+    ExternalHiddenEvaluatorSession,
+)
 
-__all__ = ["HiddenEvaluatorRunner"]
+__all__ = [
+    "ExternalEvaluatorClient",
+    "ExternalEvaluatorProtocolError",
+    "ExternalEvaluatorTransportError",
+    "ExternalHiddenEvaluatorSession",
+    "HiddenEvaluatorRunner",
+]
