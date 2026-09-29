@@ -1,0 +1,38 @@
+schema_version: "0.1"
+
+experiment:
+  id: "m2.1-opencode-free-smoke-seed-42"
+  name: "M2.1 OpenCode Free Provider Smoke"
+  condition: "ES"
+  seed: 42
+
+world:
+  agent_count: 5
+  max_world_ticks: 10000
+  tick_duration_sim_seconds: 60
+  snapshot_interval_ticks: 1000
+
+agents:
+  initial_traits:
+    exploration_bias: 0.5
+    persistence: 0.5
+    social_bias: 0.5
+    risk_bias: 0.5
+  lifecycle:
+    active_ticks_per_cycle: 960
+    sleep_ticks_per_cycle: 480
+  cognition:
+    enabled: true
+    model_calls_per_cycle: 4
+    interval_ticks: 200
+
+runtime:
+  llm_enabled: true
+  forge_enabled: false
+  sandbox_enabled: false
+  web_enabled: false
+  model_provider:
+    kind: "opencode"
+    model: "space-bunny-free"
+    base_url: "https://opencode.ai/inference/openai/v1"
+    timeout_seconds: 30
