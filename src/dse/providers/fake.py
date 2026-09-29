@@ -468,45 +468,6 @@ def _culture_v06_decision(
             and len(text_results) == 1
             and social_results
         ):
-        if (
-            social_enabled
-            and social_mode == "direct"
-            and social_budget > 0
-            and len(text_results) >= 2
-            and len(social_results) == 1
-            and social_peers
-        ):
-            target = str(
-                sorted(
-                    social_peers,
-                    key=lambda item: str(item["agent_id"]),
-                    reverse=True,
-                )[0]["agent_id"]
-            )
-            return CognitionDecision(
-                decision="propose_action",
-                reason_summary=(
-                    "Send a second bounded direct message after observing shared text reuse."
-                ),
-                confidence=0.85,
-                focus="social",
-                action=ActionProposal(
-                    kind="social_send_message",
-                    summary="Share the lineage-linked observation with another peer.",
-                    target=target,
-                    rationale=(
-                        "A second bounded message makes the direct social treatment observable "
-                        "without increasing the action budget."
-                    ),
-                    expected_value=0.8,
-                    estimated_cost=0.15,
-                    draft_content=(
-                        f"{request.agent_id} g{generation}: I reused a persistent "
-                        "text entry through explicit lineage."
-                    ),
-                ),
-            )
-
             candidates = [
                 entry
                 for entry in text_entries
@@ -556,6 +517,45 @@ def _culture_v06_decision(
                         parent_text_entry_ids=[parent_id],
                     ),
                 )
+
+        if (
+            social_enabled
+            and social_mode == "direct"
+            and social_budget > 0
+            and len(text_results) >= 2
+            and len(social_results) == 1
+            and social_peers
+        ):
+            target = str(
+                sorted(
+                    social_peers,
+                    key=lambda item: str(item["agent_id"]),
+                    reverse=True,
+                )[0]["agent_id"]
+            )
+            return CognitionDecision(
+                decision="propose_action",
+                reason_summary=(
+                    "Send a second bounded direct message after observing shared text reuse."
+                ),
+                confidence=0.85,
+                focus="social",
+                action=ActionProposal(
+                    kind="social_send_message",
+                    summary="Share the lineage-linked observation with another peer.",
+                    target=target,
+                    rationale=(
+                        "A second bounded message makes the direct social treatment observable "
+                        "without increasing the action budget."
+                    ),
+                    expected_value=0.8,
+                    estimated_cost=0.15,
+                    draft_content=(
+                        f"{request.agent_id} g{generation}: I reused a persistent "
+                        "text entry through explicit lineage."
+                    ),
+                ),
+            )
 
     required_forge_results = 2 if forge_enabled else 0
     required_text_results = 2 if social_mode == "direct" and text_enabled else (1 if text_enabled else 0)
