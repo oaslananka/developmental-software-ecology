@@ -49,13 +49,15 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
-      - name: Install Python dependencies
-        run: python -m pip install -e ".[dev]"
+      - name: Install probe test dependency
+        run: python -m pip install --only-binary=:all: pytest==8.4.2
       - name: Install gVisor runsc
         run: |
           sudo apt-get update
           sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
-          curl -fsSL https://gvisor.dev/archive.key |
+          curl --fail --show-error --silent --location \
+            --proto '=https' --proto-redir '=https' \
+            https://gvisor.dev/archive.key |
             sudo gpg --dearmor --yes -o /usr/share/keyrings/gvisor-archive-keyring.gpg
           echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" |
             sudo tee /etc/apt/sources.list.d/gvisor.list >/dev/null
