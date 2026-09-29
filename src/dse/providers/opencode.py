@@ -39,7 +39,9 @@ class OpenCodeProvider:
             "model": self.model,
             "temperature": 0,
             "max_tokens": (
-                520
+                700
+                if request.response_schema == "CognitionDecision/v0.5"
+                else 520
                 if request.response_schema == "CognitionDecision/v0.4"
                 else 420
                 if request.response_schema == "CognitionDecision/v0.3"
@@ -80,7 +82,9 @@ class OpenCodeProvider:
             raw_content = response_data["choices"][0]["message"]["content"]
             decision = CognitionDecision.model_validate_json(raw_content)
         except (KeyError, IndexError, TypeError, ValidationError) as error:
-            raise ProviderResponseError("OpenCode returned an invalid cognition response") from error
+            raise ProviderResponseError(
+                "OpenCode returned an invalid cognition response"
+            ) from error
 
         if (
             request.response_schema == "CognitionDecision/v0.1"
@@ -100,7 +104,12 @@ class OpenCodeProvider:
         if (
             request.response_schema == "CognitionDecision/v0.2"
             and decision.decision
-            in {"update_goal", "complete_goal", "abandon_goal", "propose_action"}
+            in {
+                "update_goal",
+                "complete_goal",
+                "abandon_goal",
+                "propose_action",
+            }
         ):
             raise ProviderResponseError(
                 "CognitionDecision/v0.2 does not allow lifecycle/action decisions"
@@ -112,6 +121,16 @@ class OpenCodeProvider:
         ):
             raise ProviderResponseError(
                 "CognitionDecision/v0.3 does not allow action proposals"
+            )
+
+        if (
+            request.response_schema == "CognitionDecision/v0.4"
+            and decision.decision == "propose_action"
+            and decision.action is not None
+            and decision.action.kind.startswith("forge_")
+        ):
+            raise ProviderResponseError(
+                "CognitionDecision/v0.4 does not allow Forge action proposals"
             )
 
         usage_data = response_data.get("usage") or {}
@@ -141,16 +160,51 @@ class OpenCodeProvider:
         )
 
     def _system_prompt(self, request: ModelRequest) -> str:
+        if request.response_schema == "CognitionDecision/v0.5":
+            return (
+                "Return exactly one JSON object. Allowed decisions are "
+                '"idle", "observe", "propose_goal", "update_goal", '
+                '"complete_goal", "abandon_goal", or "propose_action". '
+                "For propose_action include action with kind, summary, target, "
+                "rationale, expected_value, estimated_cost, draft_content, repo_id, "
+                "parent_artifact_ids, expected_parent_commit_id. "
+                "Allowed action kinds are inspect_workspace, draft_artifact, "
+                "run_validation, forge_create_repository, forge_inspect_repository, "
+                "forge_publish_artifact. "
+                "forge_create_repository: target is a new repository name; draft_content "
+                "and repo_id must be null; parent_artifact_ids must be empty; "
+                "expected_parent_commit_id must be null. "
+                "forge_inspect_repository: target is an existing repo_id; draft_content "
+                "and repo_id must be null; parent_artifact_ids must be empty; "
+                "expected_parent_commit_id must be null. "
+                "forge_publish_artifact: target is a relative artifact path; repo_id and "
+                "draft_content are required; parent_artifact_ids may cite existing public "
+                "artifacts; expected_parent_commit_id may pin the repository head. "
+                "draft_artifact requires draft_content. Non-publish actions must not use "
+                "repo_id, parent_artifact_ids, or expected_parent_commit_id. "
+                "Forge action proposals are intents only; the Forge Action Broker applies "
+                "budgets, provenance and world-state validation. "
+                "Only propose_action when active_goal exists and action_proposals_remaining "
+                "is greater than zero. Only propose Forge actions when forge_action_enabled "
+                "is true and forge_operations_remaining is greater than zero. "
+                "Use forge_world and forge_results as observed public evidence. "
+                "Use goal/goal_update/goal_closure exactly as required by v0.3 goal "
+                "decisions. Do not include markdown or extra fields."
+            )
+
         if request.response_schema == "CognitionDecision/v0.4":
             return (
                 "Return exactly one JSON object. Allowed decisions are "
                 '"idle", "observe", "propose_goal", "update_goal", '
                 '"complete_goal", "abandon_goal", or "propose_action". '
                 "For propose_action, include only action with kind, summary, target, "
-                "rationale, expected_value, estimated_cost, and draft_content. "
+                "rationale, expected_value, estimated_cost, draft_content, repo_id, "
+                "parent_artifact_ids, expected_parent_commit_id. "
                 "Allowed action kinds are inspect_workspace, draft_artifact, run_validation. "
                 "draft_artifact requires draft_content; all other kinds require it to be null. "
-                "Action proposals are intents only and are NOT executed. "
+                "repo_id and expected_parent_commit_id must be null and "
+                "parent_artifact_ids must be empty in v0.4. "
+                "Action proposals are intents only and are NOT executed directly. "
                 "Only propose_action when an active_goal exists and "
                 "action_proposals_remaining is greater than zero. "
                 "Use goal/goal_update/goal_closure exactly as required by v0.3 goal decisions. "
