@@ -28,6 +28,7 @@ async def advance_structured_cognition_tick(
         return events
 
     memory_config = manifest.agents.memory
+    goal_config = manifest.agents.goals
 
     for agent_id in sorted(world.agents):
         agent = world.agents[agent_id]
@@ -43,6 +44,12 @@ async def advance_structured_cognition_tick(
             "model_calls_remaining": agent.resources.model_calls_remaining,
             "cycles_completed": agent.resources.cycles_completed,
         }
+
+        if goal_config.enabled:
+            context["goal_generation_enabled"] = True
+            context["active_goal"] = _active_goal_context(agent)
+        else:
+            context["goal_generation_enabled"] = False
 
         if memory_config.enabled:
             query_text = agent.cognition.last_reason_summary or "environment"
@@ -67,8 +74,19 @@ async def advance_structured_cognition_tick(
             agent_id=agent_id,
             world_tick=world.tick,
             context=context,
+            response_schema=(
+                "CognitionDecision/v0.2"
+                if goal_config.enabled
+                else "CognitionDecision/v0.1"
+            ),
         )
         response = await provider.generate(request)
+
+        if (
+            request.response_schema == "CognitionDecision/v0.1"
+            and response.decision.decision == "propose_goal"
+        ):
+            raise ValueError("v0.1 cognition cannot propose goals")
 
         events.append(
             _emit(
@@ -104,6 +122,47 @@ async def advance_structured_cognition_tick(
             payload=response.decision.model_dump(mode="json"),
         )
         events.append(cognition_event)
+
+        if goal_config.enabled and response.decision.decision == "propose_goal":
+            proposal = response.decision.goal
+            if proposal is None:
+                raise ValueError("propose_goal response missing goal proposal")
+
+            if agent.goals.active_goal_id is None:
+                events.append(
+                    _emit(
+                        world,
+                        event_type="agent.goal.created",
+                        actor_agent_id=agent_id,
+                        payload={
+                            "goal_id": f"{agent_id}:{cognition_event.event_id}:goal",
+                            "created_tick": world.tick,
+                            "source_event_id": cognition_event.event_id,
+                            "source": "self_generated",
+                            "title": proposal.title,
+                            "description": proposal.description,
+                            "motivation_summary": proposal.motivation_summary,
+                            "expected_value": proposal.expected_value,
+                            "estimated_cost": proposal.estimated_cost,
+                            "confidence": proposal.confidence,
+                            "status": "active",
+                        },
+                    )
+                )
+            else:
+                events.append(
+                    _emit(
+                        world,
+                        event_type="agent.goal.proposal_rejected",
+                        actor_agent_id=agent_id,
+                        payload={
+                            "reason": "active_goal_exists",
+                            "active_goal_id": agent.goals.active_goal_id,
+                            "proposed_title": proposal.title,
+                            "source_event_id": cognition_event.event_id,
+                        },
+                    )
+                )
 
         if memory_config.enabled:
             memory_event = _emit(
@@ -155,6 +214,28 @@ async def advance_structured_cognition_ticks(
             )
         )
     return events
+
+
+def _active_goal_context(agent) -> dict[str, object] | None:
+    active_goal_id = agent.goals.active_goal_id
+    if active_goal_id is None:
+        return None
+
+    for goal in agent.goals.goals:
+        if goal.goal_id == active_goal_id:
+            return {
+                "goal_id": goal.goal_id,
+                "created_tick": goal.created_tick,
+                "title": goal.title,
+                "description": goal.description,
+                "motivation_summary": goal.motivation_summary,
+                "expected_value": goal.expected_value,
+                "estimated_cost": goal.estimated_cost,
+                "confidence": goal.confidence,
+                "status": goal.status.value,
+            }
+
+    raise ValueError(f"Active goal not found: {active_goal_id}")
 
 
 def _emit(

@@ -1,0 +1,50 @@
+schema_version: "0.1"
+
+experiment:
+  id: "m4-self-generated-goals-fake-seed-42"
+  name: "M4 Self-generated Goals Fake Provider"
+  condition: "ES"
+  seed: 42
+
+world:
+  agent_count: 5
+  max_world_ticks: 10000
+  tick_duration_sim_seconds: 60
+  snapshot_interval_ticks: 1000
+
+agents:
+  initial_traits:
+    exploration_bias: 0.5
+    persistence: 0.5
+    social_bias: 0.5
+    risk_bias: 0.5
+  lifecycle:
+    active_ticks_per_cycle: 960
+    sleep_ticks_per_cycle: 480
+  cognition:
+    enabled: true
+    model_calls_per_cycle: 4
+    interval_ticks: 200
+  goals:
+    enabled: true
+    max_active_goals: 1
+  memory:
+    enabled: false
+    capacity: 32
+    retrieval_limit: 4
+  sleep_memory:
+    enabled: false
+    strengthen_top_k: 0
+    salience_boost: 0.0
+    forget_below_salience: 0.0
+    forget_older_than_ticks: 0
+    max_forget_per_sleep: 0
+
+runtime:
+  llm_enabled: true
+  forge_enabled: false
+  sandbox_enabled: false
+  web_enabled: false
+  model_provider:
+    kind: "fake"
+    model: "fake-cognition-v0.1"

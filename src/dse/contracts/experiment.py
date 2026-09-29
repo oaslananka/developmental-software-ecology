@@ -41,6 +41,11 @@ class CognitionConfig(StrictModel):
     interval_ticks: int = Field(default=200, gt=0)
 
 
+class GoalConfig(StrictModel):
+    enabled: bool = False
+    max_active_goals: int = Field(default=1, ge=1, le=1)
+
+
 class MemoryConfig(StrictModel):
     enabled: bool = False
     capacity: int = Field(default=32, ge=1)
@@ -67,6 +72,7 @@ class AgentConfig(StrictModel):
     initial_traits: TraitConfig
     lifecycle: LifecycleConfig = Field(default_factory=LifecycleConfig)
     cognition: CognitionConfig = Field(default_factory=CognitionConfig)
+    goals: GoalConfig = Field(default_factory=GoalConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     sleep_memory: SleepMemoryConfig = Field(default_factory=SleepMemoryConfig)
 

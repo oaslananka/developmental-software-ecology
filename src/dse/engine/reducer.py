@@ -1,4 +1,4 @@
-from dse.contracts.agent import EpisodicMemory, LifecycleState
+from dse.contracts.agent import EpisodicMemory, GoalRecord, GoalStatus, LifecycleState
 from dse.contracts.event import WorldEvent
 from dse.engine.world import WorldState
 
@@ -96,6 +96,24 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             agent.cognition.last_reason_summary = str(event.payload["reason_summary"])
             agent.cognition.last_confidence = float(event.payload["confidence"])
             agent.state_version += 1
+
+        case "agent.goal.created":
+            agent = _agent_for_event(world, event)
+            goal = GoalRecord.model_validate(event.payload)
+
+            if goal.status != GoalStatus.ACTIVE:
+                raise ValueError("New goals must start active")
+            if agent.goals.active_goal_id is not None:
+                raise ValueError("Agent already has an active goal")
+            if any(existing.goal_id == goal.goal_id for existing in agent.goals.goals):
+                raise ValueError(f"Duplicate goal ID: {goal.goal_id}")
+
+            agent.goals.goals.append(goal)
+            agent.goals.active_goal_id = goal.goal_id
+            agent.state_version += 1
+
+        case "agent.goal.proposal_rejected":
+            pass
 
         case "memory.episode.recorded":
             agent = _agent_for_event(world, event)

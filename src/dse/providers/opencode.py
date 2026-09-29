@@ -38,16 +38,15 @@ class OpenCodeProvider:
         payload = {
             "model": self.model,
             "temperature": 0,
-            "max_tokens": 160,
+            "max_tokens": (
+                320
+                if request.response_schema == "CognitionDecision/v0.2"
+                else 160
+            ),
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "Return exactly one JSON object matching this schema: "
-                        '{"decision":"idle|observe","reason_summary":"short text",'
-                        '"confidence":0.0,"focus":"optional short text or null"}. '
-                        "Do not include markdown or additional fields."
-                    ),
+                    "content": self._system_prompt(request),
                 },
                 {
                     "role": "user",
@@ -79,6 +78,14 @@ class OpenCodeProvider:
         except (KeyError, IndexError, TypeError, ValidationError) as error:
             raise ProviderResponseError("OpenCode returned an invalid cognition response") from error
 
+        if (
+            request.response_schema == "CognitionDecision/v0.1"
+            and decision.decision == "propose_goal"
+        ):
+            raise ProviderResponseError(
+                "CognitionDecision/v0.1 does not allow goal proposals"
+            )
+
         usage_data = response_data.get("usage") or {}
         usage = ModelUsage(
             input_tokens=int(usage_data.get("prompt_tokens", 0) or 0),
@@ -103,6 +110,27 @@ class OpenCodeProvider:
             usage=usage,
             request_hash=request_hash,
             response_hash=state_hash(response_material),
+        )
+
+    def _system_prompt(self, request: ModelRequest) -> str:
+        if request.response_schema == "CognitionDecision/v0.2":
+            return (
+                "Return exactly one JSON object. Allowed decisions are "
+                '"idle", "observe", or "propose_goal". '
+                'Fields: "decision", "reason_summary", "confidence", "focus", "goal". '
+                "When decision is propose_goal, goal must be an object with "
+                '"title", "description", "motivation_summary", "expected_value", '
+                '"estimated_cost", and "confidence". All numeric values must be 0..1. '
+                "When decision is idle or observe, goal must be null. "
+                "Only propose a goal when context.goal_generation_enabled is true and "
+                "context.active_goal is null. Do not include markdown or extra fields."
+            )
+
+        return (
+            "Return exactly one JSON object matching this schema: "
+            '{"decision":"idle|observe","reason_summary":"short text",'
+            '"confidence":0.0,"focus":"optional short text or null","goal":null}. '
+            "Do not include markdown or additional fields."
         )
 
     async def _post(
