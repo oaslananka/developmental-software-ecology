@@ -228,10 +228,8 @@ print(json.dumps({"tmpfs_disk_limited": limited}))
     assert measured == {"tmpfs_disk_limited": True}
 
 
-def test_gvisor_pid_limit_is_measured() -> None:
-    measured = _run_json_probe(
-        "dse-gvisor-pid-probe",
-        r"""
+def test_gvisor_pid_exhaustion_is_fail_closed_and_sandbox_local() -> None:
+    script = r"""
 import json
 import os
 import signal
@@ -266,11 +264,55 @@ print(json.dumps({
     "children_started": len(children),
     "pid_limit_enforced": limited,
 }, sort_keys=True))
-""",
-    )
+"""
 
-    assert measured["pid_limit_enforced"] is True
-    assert measured["children_started"] < 64
+    control = _run_json_probe(
+        "dse-gvisor-pid-control",
+        script,
+        pids_limit=128,
+    )
+    assert control == {
+        "children_started": 64,
+        "pid_limit_enforced": False,
+    }
+
+    limited_name = "dse-gvisor-pid-limited"
+    _remove(limited_name)
+    try:
+        _create_probe_container(
+            limited_name,
+            script,
+            pids_limit=32,
+        )
+        result = _run(
+            ["docker", "start", "-a", limited_name],
+            timeout=30.0,
+            check=False,
+        )
+        inspect = json.loads(
+            _run(["docker", "inspect", limited_name]).stdout
+        )[0]
+
+        assert inspect["HostConfig"]["PidsLimit"] == 32
+        assert inspect["State"]["OOMKilled"] is False
+
+        if result.returncode == 0:
+            measured = json.loads(
+                result.stdout.strip().splitlines()[-1]
+            )
+            assert measured["pid_limit_enforced"] is True
+            assert measured["children_started"] < 64
+        else:
+            assert inspect["State"]["ExitCode"] == result.returncode
+    finally:
+        _remove(limited_name)
+
+    recovery = _run_json_probe(
+        "dse-gvisor-pid-recovery",
+        'import json; print(json.dumps({"recovered": True}))',
+        pids_limit=32,
+    )
+    assert recovery == {"recovered": True}
 
 
 def test_gvisor_container_filesystem_is_ephemeral_between_containers() -> None:
