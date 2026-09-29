@@ -9,6 +9,11 @@ from dse.engine.memory import (
     select_eviction_candidate,
 )
 from dse.engine.reducer import apply_event
+from dse.engine.text_social import (
+    visible_social_messages,
+    visible_social_threads,
+    visible_text_entries,
+)
 from dse.engine.world import WorldState
 from dse.providers.base import ModelProvider
 
@@ -72,6 +77,50 @@ async def advance_structured_cognition_tick(
         context["tool_executions_remaining"] = (
             agent.resources.tool_executions_remaining
         )
+        context["text_culture_enabled"] = (
+            action_config.enabled and manifest.runtime.text_culture.enabled
+        )
+        context["text_operations_remaining"] = (
+            agent.resources.text_operations_remaining
+        )
+        context["social_action_enabled"] = (
+            action_config.enabled and manifest.runtime.social.enabled
+        )
+        context["social_mode"] = manifest.runtime.social.mode
+        context["social_operations_remaining"] = (
+            agent.resources.social_operations_remaining
+        )
+
+        if manifest.runtime.text_culture.enabled:
+            context["text_culture"] = visible_text_entries(world, manifest)
+
+        if manifest.runtime.social.enabled:
+            context["social_peers"] = [
+                {
+                    "agent_id": peer.agent_id,
+                    "generation": peer.generation,
+                }
+                for peer_id, peer in sorted(world.agents.items())
+                if peer_id != agent_id
+            ]
+            context["social_messages"] = visible_social_messages(
+                world,
+                manifest,
+                agent_id=agent_id,
+            )
+            context["social_threads"] = visible_social_threads(
+                world,
+                manifest,
+            )
+
+        if (
+            manifest.runtime.text_culture.enabled
+            or manifest.runtime.social.enabled
+        ):
+            context["culture_results"] = [
+                result.model_dump(mode="json")
+                for result in agent.actions.culture_results[-6:]
+            ]
 
         if manifest.agents.tool_broker.enabled:
             context["tool_results"] = [
@@ -251,6 +300,14 @@ async def advance_structured_cognition_ticks(
 def _response_schema(manifest: ExperimentManifest) -> str:
     if (
         manifest.agents.actions.enabled
+        and (
+            manifest.runtime.text_culture.enabled
+            or manifest.runtime.social.enabled
+        )
+    ):
+        return "CognitionDecision/v0.6"
+    if (
+        manifest.agents.actions.enabled
         and manifest.runtime.forge_enabled
         and manifest.runtime.forge.enabled
     ):
@@ -293,9 +350,24 @@ def _validate_schema_decision(schema: str, decision) -> None:
         schema == "CognitionDecision/v0.4"
         and decision_name == "propose_action"
         and decision.action is not None
-        and decision.action.kind.startswith("forge_")
+        and (
+            decision.action.kind.startswith("forge_")
+            or decision.action.kind.startswith("text_")
+            or decision.action.kind.startswith("social_")
+        )
     ):
-        raise ValueError("v0.4 cognition cannot emit forge action proposals")
+        raise ValueError("v0.4 cognition cannot emit culture action proposals")
+
+    if (
+        schema == "CognitionDecision/v0.5"
+        and decision_name == "propose_action"
+        and decision.action is not None
+        and (
+            decision.action.kind.startswith("text_")
+            or decision.action.kind.startswith("social_")
+        )
+    ):
+        raise ValueError("v0.5 cognition cannot emit text/social action proposals")
 
 
 def _emit_goal_events(
@@ -490,6 +562,7 @@ def _emit_action_events(
                 "repo_id": proposal.repo_id,
                 "parent_artifact_ids": list(proposal.parent_artifact_ids),
                 "expected_parent_commit_id": proposal.expected_parent_commit_id,
+                "parent_text_entry_ids": list(proposal.parent_text_entry_ids),
                 "status": "proposed",
             },
         )
