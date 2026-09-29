@@ -1,4 +1,5 @@
 schema_version: "0.1"
+evaluation_profile: "v0_1-hidden-functional-suite"
 
 study:
   enforce_condition_contract: true
@@ -100,24 +101,3 @@ runtime:
   model_provider:
     kind: "fake"
     model: "fake-cognition-v0.1"
-
-evaluation:
-  enabled: true
-  suite_id: "v0_1-hidden-functional-suite"
-  suite_hash: "4791850327e4f4fead67e668c6a4d7e155048653b8cabf5fdede47c31b91f8a4"
-  max_snapshot_artifacts: 512
-  max_snapshot_bytes: 1048576
-  max_cases: 256
-  sandbox_enabled: true
-  sandbox_policy:
-    backend: "external-hardened"
-    network_enabled: false
-    host_mounts_enabled: false
-    secrets_enabled: false
-    shell_enabled: false
-    cpu_seconds: 2
-    memory_mb: 256
-    pids_max: 32
-    disk_mb: 64
-    output_bytes: 65536
-    wall_timeout_seconds: 5
