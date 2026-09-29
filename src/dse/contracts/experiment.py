@@ -30,8 +30,14 @@ class TraitConfig(StrictModel):
     risk_bias: float = Field(ge=0.0, le=1.0)
 
 
+class LifecycleConfig(StrictModel):
+    active_ticks_per_cycle: int = Field(default=960, gt=0)
+    sleep_ticks_per_cycle: int = Field(default=480, gt=0)
+
+
 class AgentConfig(StrictModel):
     initial_traits: TraitConfig
+    lifecycle: LifecycleConfig = Field(default_factory=LifecycleConfig)
 
 
 class RuntimeConfig(StrictModel):
