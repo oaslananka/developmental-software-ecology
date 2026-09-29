@@ -12,7 +12,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 IMAGE = os.environ.get("DSE_GVISOR_PROBE_IMAGE", "python:3.12-slim")
-PID_PROBE_MEMORY = "512m"
+PID_PROBE_MEMORY = "2g"
+PID_PROBE_MEMORY_BYTES = 2 * 1024 * 1024 * 1024
 # Keep the control ceiling well above the 64-fork workload so the A/B probe
 # isolates PID pressure rather than gVisor/runtime-internal task overhead.
 PID_PROBE_CONTROL_LIMIT = 512
@@ -300,8 +301,8 @@ print(json.dumps({
         )[0]
 
         assert inspect["HostConfig"]["PidsLimit"] == 32
-        assert inspect["HostConfig"]["Memory"] == 512 * 1024 * 1024
-        assert inspect["HostConfig"]["MemorySwap"] == 512 * 1024 * 1024
+        assert inspect["HostConfig"]["Memory"] == PID_PROBE_MEMORY_BYTES
+        assert inspect["HostConfig"]["MemorySwap"] == PID_PROBE_MEMORY_BYTES
         assert inspect["State"]["OOMKilled"] is False
 
         if result.returncode == 0:
