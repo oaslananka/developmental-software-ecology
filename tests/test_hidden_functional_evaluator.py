@@ -353,6 +353,7 @@ def test_external_hardened_report_evidence_can_clear_runtime_gate() -> None:
     hardened = report.model_copy(
         update={
             "runner_kind": "external-hardened",
+            "attestation_evidence_kind": "runtime-measured",
             "worker_build_sha256": "1" * 64,
             "runtime_build_sha256": "2" * 64,
         }
