@@ -111,6 +111,10 @@ try:
 except OSError:
     disk_limited = True
 result["tmpfs_disk_limited"] = disk_limited
+try:
+    os.unlink("/tmp/dse-fill")
+except FileNotFoundError:
+    pass
 
 children = []
 pid_limited = False
@@ -247,5 +251,8 @@ def test_gvisor_memory_limit_is_actually_enforced() -> None:
 
 def test_gvisor_probe_does_not_depend_on_dmesg_runtime_claims() -> None:
     source = Path(__file__).read_text(encoding="utf-8").lower()
-    assert "docker dmesg" not in source
-    assert " dmesg" not in source
+    probe_source = source.split(
+        "def test_gvisor_probe_does_not_depend_on_dmesg_runtime_claims",
+        maxsplit=1,
+    )[0]
+    assert "dmesg" not in probe_source
