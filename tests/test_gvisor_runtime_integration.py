@@ -13,6 +13,7 @@ pytestmark = pytest.mark.skipif(
 
 IMAGE = os.environ.get("DSE_GVISOR_PROBE_IMAGE", "python:3.12-slim")
 PID_PROBE_MEMORY = "512m"
+PID_PROBE_CONTROL_LIMIT = 512
 
 
 def _run(
@@ -271,7 +272,7 @@ print(json.dumps({
         "dse-gvisor-pid-control",
         script,
         memory=PID_PROBE_MEMORY,
-        pids_limit=128,
+        pids_limit=PID_PROBE_CONTROL_LIMIT,
     )
     assert control == {
         "children_started": 64,
