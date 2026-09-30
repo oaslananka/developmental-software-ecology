@@ -85,7 +85,7 @@ def test_all_primary_condition_manifests_share_compute_budget() -> None:
         assert manifest.agents.turnover.ticks == [150]
         assert manifest.agents.cognition.model_calls_per_cycle == 7
         assert manifest.agents.cognition.interval_ticks == 20
-        assert manifest.agents.actions.proposals_per_cycle == 4
+        assert manifest.agents.actions.proposals_per_cycle == 5
         assert manifest.agents.memory.capacity == 32
         assert manifest.runtime.forge.operations_per_cycle == 4
         assert manifest.runtime.text_culture.operations_per_cycle == 4
@@ -98,6 +98,13 @@ def test_all_primary_condition_manifests_share_compute_budget() -> None:
         )
         assert manifest.evaluation.sandbox_enabled is True
         assert manifest.evaluation.sandbox_policy.backend == "external-hardened"
+        assert (
+            manifest.functional_opportunity_profile
+            == "v0_1-functional-submission"
+        )
+        assert manifest.functional_opportunity.enabled is True
+        assert manifest.functional_opportunity.submission_path == "submission.py"
+        assert manifest.functional_opportunity.entrypoint == "solve"
 
 
 def test_condition_contract_rejects_treatment_drift() -> None:
@@ -144,6 +151,10 @@ def test_evaluation_profile_roundtrips_canonical_manifest() -> None:
 
     assert restored == manifest
     assert restored.evaluation_profile == "v0_1-hidden-functional-suite"
+    assert (
+        restored.functional_opportunity_profile
+        == "v0_1-functional-submission"
+    )
 
 
 def test_evaluation_profile_rejects_expanded_config_drift() -> None:
@@ -157,6 +168,18 @@ def test_evaluation_profile_rejects_expanded_config_drift() -> None:
     ):
         ExperimentManifest.model_validate(raw)
 
+
+
+def test_functional_opportunity_profile_rejects_expanded_config_drift() -> None:
+    manifest = load_manifest(CONDITION_PATHS["P"])
+    raw = manifest.model_dump(mode="json")
+    raw["functional_opportunity"]["submission_path"] = "other.py"
+
+    with pytest.raises(
+        ValidationError,
+        match="functional_opportunity does not match",
+    ):
+        ExperimentManifest.model_validate(raw)
 
 def test_ril_requires_explicit_isolated_topology() -> None:
     raw = yaml.safe_load(
@@ -302,7 +325,7 @@ def test_p_and_ril_observed_compute_match_under_equal_budget() -> None:
     assert usages["RIL"].model_calls == 70
     assert usages["P"].total_tokens == 3080
     assert usages["RIL"].total_tokens == 3080
-    assert usages["P"].action_proposals == 40
-    assert usages["RIL"].action_proposals == 40
+    assert usages["P"].action_proposals == 50
+    assert usages["RIL"].action_proposals == 50
     assert usages["P"].forge_operations == 0
     assert usages["RIL"].forge_operations == 0
