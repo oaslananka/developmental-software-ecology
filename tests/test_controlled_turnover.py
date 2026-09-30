@@ -122,6 +122,7 @@ def test_turnover_deletes_private_state_but_preserves_public_culture() -> None:
         assert agent.actions.proposals == []
         assert agent.actions.executions == []
         assert agent.actions.forge_results == []
+        assert agent.functional_submission.current is None
         assert agent.memory.episodes == []
         assert agent.resources.model_calls_remaining == 7
         assert agent.resources.action_proposals_remaining == 4
@@ -232,6 +233,7 @@ def test_turnover_events_report_private_counts_without_private_content() -> None
             "tool_executions": 0,
             "forge_results": 4,
             "culture_results": 0,
+            "functional_submission": 0,
             "episodic_memories": 7,
         }
         assert "memory" not in event.payload
