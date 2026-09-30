@@ -245,7 +245,7 @@ def assess_condition_support(
             "direct agent-to-agent channel."
         )
 
-    if profile.artifact_culture == "executable":
+    if manifest.functional_opportunity.enabled:
         evaluation = manifest.evaluation
         if not evaluation.enabled:
             missing.append("hidden_functional_evaluator")
@@ -253,7 +253,7 @@ def assess_condition_support(
             not evaluation.sandbox_enabled
             or evaluation.sandbox_policy.backend == "none"
         ):
-            missing.append("hardened_artifact_execution_runtime")
+            missing.append("hardened_functional_evaluator_runtime")
         else:
             missing.append("attested_hardened_evaluator_runtime")
 
@@ -277,9 +277,7 @@ def assess_condition_runtime_readiness(
     evaluation_report: "FunctionalEvaluationReport | None",
 ) -> ConditionSupportReport:
     static = assess_condition_support(manifest)
-    profile = expected_condition_profile(manifest.experiment.condition)
-    if profile.artifact_culture != "executable":
-        return static
+    expected_condition_profile(manifest.experiment.condition)
 
     missing = list(static.missing_surfaces)
     notes = list(static.notes)
