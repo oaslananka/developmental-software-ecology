@@ -175,6 +175,19 @@ def validate_condition_manifest(manifest: "ExperimentManifest") -> None:
             "condition-contract manifests require the V0.1 evaluation profile"
         )
 
+    if (
+        manifest.functional_opportunity_profile
+        != "v0_1-functional-submission"
+    ):
+        raise ValueError(
+            "condition-contract manifests require the V0.1 "
+            "functional opportunity profile"
+        )
+    if not manifest.functional_opportunity.enabled:
+        raise ValueError(
+            "condition-contract manifests require functional submissions"
+        )
+
     if profile.ril_control:
         if study.ril_topology == "not_applicable":
             raise ValueError("RIL condition requires an explicit isolated topology")
