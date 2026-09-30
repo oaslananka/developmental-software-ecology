@@ -12,11 +12,10 @@ from dse.evaluator.http import (
     ExternalHiddenEvaluatorSession,
 )
 from dse.evaluator.service import (
-    EvaluatorHTTPServer,
-    EvaluatorRequestHandler,
     EvaluatorServiceApplication,
     EvaluatorServiceConfig,
     EvaluatorServiceResponse,
+    EvaluatorTLSServer,
     build_service,
     serve_https,
 )
@@ -33,11 +32,10 @@ from dse.evaluator.worker import (
 )
 
 __all__ = [
-    "EvaluatorHTTPServer",
-    "EvaluatorRequestHandler",
     "EvaluatorServiceApplication",
     "EvaluatorServiceConfig",
     "EvaluatorServiceResponse",
+    "EvaluatorTLSServer",
     "EvaluatorWorkerError",
     "ExternalEvaluatorClient",
     "ExternalEvaluatorProtocolError",
