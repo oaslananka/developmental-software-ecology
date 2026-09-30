@@ -52,15 +52,17 @@ def _advance_es(world, manifest, count: int):
     )
 
 
-def test_t_condition_is_runtime_ready_after_m15() -> None:
+def test_t_treatment_surfaces_exist_but_common_evaluator_gate_remains() -> None:
     manifest = load_manifest(T_MANIFEST)
     report = assess_condition_support(manifest)
 
     assert manifest.runtime.text_culture.enabled is True
     assert manifest.runtime.social.enabled is True
     assert manifest.runtime.social.mode == "direct"
-    assert report.research_runtime_ready is True
-    assert report.missing_surfaces == []
+    assert report.research_runtime_ready is False
+    assert report.missing_surfaces == [
+        "attested_hardened_evaluator_runtime",
+    ]
 
 
 def test_t_turnover_preserves_text_but_does_not_inherit_direct_inbox() -> None:
