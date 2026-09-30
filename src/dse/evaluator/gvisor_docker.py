@@ -1,11 +1,12 @@
 import asyncio
+import base64
 import hashlib
 import json
 import os
 import selectors
 import shutil
 import subprocess
-import tempfile
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -21,6 +22,28 @@ from dse.evaluator.suite_store import HiddenSuiteBundle
 
 class GVisorBackendError(RuntimeError):
     """Raised when the concrete gVisor/Docker evaluator fails closed."""
+
+
+_EVALUATION_BOOTSTRAP = """
+import base64
+import json
+import sys
+
+envelope = json.loads(sys.stdin.buffer.read())
+suite_source = base64.b64decode(
+    envelope["suite_b64"],
+    validate=True,
+)
+namespace = {
+    "__name__": "__main__",
+    "DSE_REQUEST": envelope["request"],
+}
+exec(
+    compile(suite_source, "<hidden-suite>", "exec"),
+    namespace,
+    namespace,
+)
+"""
 
 
 @dataclass(frozen=True)
@@ -155,100 +178,74 @@ class GVisorDockerBackend:
             raise GVisorBackendError("hidden suite exceeds backend byte limit")
 
         token = uuid.uuid4().hex[:12]
-        stage_name = f"dse-m18-2-stage-{token}"
         run_name = f"dse-m18-2-eval-{token}"
-        staged_image = f"dse-m18-2-private-eval:{token}"
+        envelope = json.dumps(
+            {
+                "suite_b64": base64.b64encode(
+                    suite.payload
+                ).decode("ascii"),
+                "request": request.model_dump(mode="json"),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
 
-        with tempfile.TemporaryDirectory(prefix="dse-m18-2-stage-") as tmp:
-            root = Path(tmp)
-            (root / "suite.py").write_bytes(suite.payload)
-            (root / "request.json").write_text(
-                json.dumps(
-                    request.model_dump(mode="json"),
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ),
-                encoding="utf-8",
+        try:
+            self._create_runtime_container(
+                run_name,
+                request.policy,
+                python_args=[
+                    "-I",
+                    "-B",
+                    "-c",
+                    _EVALUATION_BOOTSTRAP,
+                ],
             )
+            started = self._run_attached(
+                run_name,
+                wall_timeout=float(
+                    request.policy.wall_timeout_seconds
+                ),
+                output_limit=request.policy.output_bytes,
+                stdin_data=envelope,
+            )
+            if started.timed_out:
+                raise GVisorBackendError(
+                    "hidden suite exceeded wall-time limit"
+                )
+            if started.output_exceeded:
+                raise GVisorBackendError(
+                    "hidden suite exceeded output-byte limit"
+                )
+            if started.returncode != 0:
+                raise GVisorBackendError(
+                    "hidden suite exited unsuccessfully"
+                )
 
+            aggregate_payload = self._parse_aggregate(
+                started.stdout
+            )
+            aggregate_payload["duration_ms"] = (
+                started.duration_ms
+            )
             try:
-                self._run_checked(
-                    [
-                        self.docker_binary,
-                        "create",
-                        "--name",
-                        stage_name,
-                        self.runtime_image,
-                    ]
-                )
-                self._run_checked(
-                    [
-                        self.docker_binary,
-                        "cp",
-                        f"{root}{os.sep}.",
-                        f"{stage_name}:/dse_eval",
-                    ]
-                )
-                self._run_checked(
-                    [
-                        self.docker_binary,
-                        "commit",
-                        stage_name,
-                        staged_image,
-                    ]
-                )
-                self._remove_container(stage_name)
-
-                self._create_runtime_container(
-                    run_name,
-                    request.policy,
-                    image=staged_image,
-                    python_args=[
-                        "-I",
-                        "-B",
-                        "/dse_eval/suite.py",
-                        "/dse_eval/request.json",
-                    ],
-                )
-                started = self._run_attached(
-                    run_name,
-                    wall_timeout=float(request.policy.wall_timeout_seconds),
-                    output_limit=request.policy.output_bytes,
-                )
-                if started.timed_out:
-                    raise GVisorBackendError(
-                        "hidden suite exceeded wall-time limit"
-                    )
-                if started.output_exceeded:
-                    raise GVisorBackendError(
-                        "hidden suite exceeded output-byte limit"
-                    )
-                if started.returncode != 0:
-                    raise GVisorBackendError(
-                        "hidden suite exited unsuccessfully"
-                    )
-
-                aggregate_payload = self._parse_aggregate(started.stdout)
-                aggregate_payload["duration_ms"] = started.duration_ms
-                try:
-                    aggregate = WorkerEvaluationAggregate.model_validate(
+                aggregate = (
+                    WorkerEvaluationAggregate.model_validate(
                         aggregate_payload
                     )
-                except Exception as error:
-                    raise GVisorBackendError(
-                        "hidden suite returned an invalid aggregate"
-                    ) from error
-                if aggregate.total_cases != suite.total_cases:
-                    raise GVisorBackendError(
-                        "hidden suite aggregate case count drift"
-                    )
-                return aggregate
-            finally:
-                self._remove_container(run_name)
-                self._remove_container(stage_name)
-                self._remove_image(staged_image)
-                self._require_container_absent(run_name)
-                self._require_container_absent(stage_name)
+                )
+            except Exception as error:
+                raise GVisorBackendError(
+                    "hidden suite returned an invalid aggregate"
+                ) from error
+            if aggregate.total_cases != suite.total_cases:
+                raise GVisorBackendError(
+                    "hidden suite aggregate case count drift"
+                )
+            return aggregate
+        finally:
+            self._remove_container(run_name)
+            self._require_container_absent(run_name)
 
     def _probe_basic_isolation(
         self,
@@ -739,6 +736,7 @@ time.sleep({policy.wall_timeout_seconds + 5})
             f"--cpus={self._cpu_quota(policy):.6f}",
             "--user=65532:65532",
             "--log-driver=none",
+            "--interactive",
             "--stop-timeout=1",
             "--tmpfs",
             tmpfs,
@@ -755,10 +753,25 @@ time.sleep({policy.wall_timeout_seconds + 5})
         *,
         wall_timeout: float,
         output_limit: int,
+        stdin_data: bytes | None = None,
     ) -> _AttachedResult:
         started = time.monotonic()
+        command = [
+            self.docker_binary,
+            "start",
+            "--attach",
+        ]
+        if stdin_data is not None:
+            command.append("--interactive")
+        command.append(name)
+
         proc = subprocess.Popen(
-            [self.docker_binary, "start", "--attach", name],
+            command,
+            stdin=(
+                subprocess.PIPE
+                if stdin_data is not None
+                else subprocess.DEVNULL
+            ),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -767,6 +780,33 @@ time.sleep({policy.wall_timeout_seconds + 5})
             raise GVisorBackendError(
                 "unable to attach evaluator streams"
             )
+
+        writer: threading.Thread | None = None
+        if stdin_data is not None:
+            if proc.stdin is None:
+                proc.kill()
+                raise GVisorBackendError(
+                    "unable to attach evaluator stdin"
+                )
+
+            def write_input() -> None:
+                try:
+                    proc.stdin.write(stdin_data)
+                    proc.stdin.flush()
+                except (BrokenPipeError, OSError):
+                    pass
+                finally:
+                    try:
+                        proc.stdin.close()
+                    except OSError:
+                        pass
+
+            writer = threading.Thread(
+                target=write_input,
+                name=f"{name}-stdin",
+                daemon=True,
+            )
+            writer.start()
 
         selector = selectors.DefaultSelector()
         selector.register(proc.stdout, selectors.EVENT_READ, "stdout")
@@ -836,6 +876,8 @@ time.sleep({policy.wall_timeout_seconds + 5})
                 proc.wait(timeout=2)
         finally:
             selector.close()
+            if writer is not None:
+                writer.join(timeout=1.0)
 
         duration_ms = int(
             (time.monotonic() - started) * 1000
