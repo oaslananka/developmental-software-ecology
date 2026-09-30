@@ -137,7 +137,12 @@ class DeterministicFakeProvider:
         ):
             progress = float(active_goal.get("progress", 0.0))
 
-            if progress < 0.5:
+            if request.context.get("functional_submission") is not None:
+                decision = _goal_completion(
+                    "The current generation exported a bounded functional "
+                    "submission after exercising its available work surfaces."
+                )
+            elif progress < 0.5:
                 decision = CognitionDecision(
                     decision="update_goal",
                     reason_summary="The bounded action intents establish initial progress.",
@@ -585,6 +590,15 @@ def _culture_v06_decision(
     ):
         return _functional_submission_decision(request)
 
+    if (
+        treatment_complete
+        and context.get("functional_submission") is not None
+    ):
+        return _goal_completion(
+            "The current generation exercised its treatment channels and "
+            "exported the common functional submission."
+        )
+
     if treatment_complete and progress < 0.8:
         return CognitionDecision(
             decision="update_goal",
@@ -815,6 +829,15 @@ def _forge_v05_decision(
         and context.get("functional_submission") is None
     ):
         return _functional_submission_decision(request)
+
+    if (
+        len(forge_results) >= 4
+        and context.get("functional_submission") is not None
+    ):
+        return _goal_completion(
+            "The current generation reused executable culture and exported "
+            "the common functional submission."
+        )
 
     if len(forge_results) >= 4 and progress < 0.8:
         return CognitionDecision(
