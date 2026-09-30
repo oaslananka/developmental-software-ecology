@@ -37,11 +37,8 @@ RUNTIME_IMAGE = os.environ.get(
 )
 SUITE_ID = "m18-2-public-fixture-suite"
 SUITE_SOURCE = b"""import json
-import sys
 
-with open(sys.argv[1], encoding="utf-8") as handle:
-    request = json.load(handle)
-
+request = DSE_REQUEST
 artifacts = request["snapshot"]["artifacts"]
 passed = int(any("M18_2_OK" in item["content"] for item in artifacts))
 print(json.dumps({
