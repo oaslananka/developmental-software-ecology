@@ -349,36 +349,29 @@ print(json.dumps({{
             self._remove_container(name)
             self._require_container_absent(name)
 
-    def _probe_cpu_limit(self, policy: SandboxPolicyConfig) -> SandboxCheck:
+    def _probe_cpu_limit(
+        self,
+        policy: SandboxPolicyConfig,
+    ) -> SandboxCheck:
         name = self._name("cpu")
-        workers = max(2, min(8, policy.pids_max - 2))
-        duration = min(2.0, max(1.0, policy.wall_timeout_seconds / 2))
+        quota = self._cpu_quota(policy)
+        duration = min(
+            2.0,
+            max(1.0, policy.wall_timeout_seconds / 2),
+        )
         script = f"""
 import json
-import os
-import resource
 import time
 
-workers = {workers}
 duration = {duration!r}
-children = []
-start = time.monotonic()
-for _ in range(workers):
-    pid = os.fork()
-    if pid == 0:
-        deadline = time.monotonic() + duration
-        value = 0
-        while time.monotonic() < deadline:
-            value = (value * 33 + 17) % 1000003
-        os._exit(value & 0)
-    children.append(pid)
-
-for pid in children:
-    os.waitpid(pid, 0)
-elapsed = max(time.monotonic() - start, 0.001)
-usage = resource.getrusage(resource.RUSAGE_CHILDREN)
-cpu = usage.ru_utime + usage.ru_stime
-print(json.dumps({{"cpu_seconds": cpu, "wall_seconds": elapsed}}))
+started_wall = time.monotonic()
+started_cpu = time.process_time()
+value = 0
+while time.monotonic() - started_wall < duration:
+    value = (value * 33 + 17) % 1000003
+wall = max(time.monotonic() - started_wall, 0.001)
+cpu = max(time.process_time() - started_cpu, 0.0)
+print(json.dumps({{"cpu_seconds": cpu, "wall_seconds": wall}}))
 """
         self._create_runtime_container(
             name,
@@ -392,27 +385,38 @@ print(json.dumps({{"cpu_seconds": cpu, "wall_seconds": elapsed}}))
                     float(policy.wall_timeout_seconds),
                     duration + 3.0,
                 ),
-                output_limit=min(policy.output_bytes, 65_536),
+                output_limit=min(
+                    policy.output_bytes,
+                    65_536,
+                ),
             )
             measured = self._json_from_stdout(result)
             observed_cores = (
-                measured["cpu_seconds"] / measured["wall_seconds"]
+                measured["cpu_seconds"]
+                / measured["wall_seconds"]
             )
-            quota = self._cpu_quota(policy)
-            tolerance = max(0.35, quota * 0.35)
+            tolerance = max(0.20, quota * 0.35)
+            measurable = quota < 1.0
             passed = (
-                not result.timed_out
+                measurable
+                and not result.timed_out
                 and not result.output_exceeded
                 and result.returncode == 0
                 and observed_cores <= quota + tolerance
             )
+            detail = (
+                f"busy-loop measured {observed_cores:.3f} CPU cores "
+                f"against quota {quota:.3f}"
+                if measurable
+                else (
+                    f"quota {quota:.3f} needs a multi-core "
+                    "adversarial probe"
+                )
+            )
             return SandboxCheck(
                 name="cpu_limit_enforced",
                 passed=passed,
-                detail=(
-                    f"busy-loop measured {observed_cores:.3f} CPU cores "
-                    f"against quota {quota:.3f}"
-                ),
+                detail=detail,
             )
         finally:
             self._remove_container(name)
