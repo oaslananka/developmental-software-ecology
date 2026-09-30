@@ -3,13 +3,12 @@ import asyncio
 import hmac
 import json
 import os
-import socket
 import ssl
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Mapping
 
 from pydantic import ValidationError
 
@@ -374,11 +373,7 @@ class EvaluatorRequestHandler(BaseHTTPRequestHandler):
             body = self.rfile.read(
                 content_length
             )
-        except (
-            TimeoutError,
-            socket.timeout,
-            OSError,
-        ):
+        except (TimeoutError, OSError):
             self.close_connection = True
             response = EvaluatorServiceResponse.json(
                 HTTPStatus.REQUEST_TIMEOUT,
