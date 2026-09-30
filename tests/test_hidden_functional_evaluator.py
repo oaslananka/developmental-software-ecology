@@ -181,7 +181,7 @@ def test_primary_evaluator_config_is_separate_from_agent_runtime() -> None:
     _check(opportunity.spec_id == "dse-utility-kernel-v0.1")
     _check(
         opportunity.spec_sha256
-        == "7284687308bd4dbdef7a7558349bbdd9718a6f788b155fb6d77634731e6f3967"
+        == "8c5dbb384df0bb73e2b8db6dd9b8a97cf31ef904ecca8a5bf4411f5e8e696439"
     )
     _check(opportunity.aggregation == "population_any")
     _check(
