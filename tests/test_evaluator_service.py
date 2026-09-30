@@ -152,7 +152,7 @@ def _application(
     )
     return EvaluatorServiceApplication(
         worker=worker,
-        bearer_token=AUTH_FIXTURE,
+        authorization_value=AUTH_FIXTURE,
         max_request_bytes=max_request_bytes,
     )
 
