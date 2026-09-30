@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import ssl
 from pathlib import Path
 
 import httpx
@@ -18,6 +19,7 @@ from dse.evaluator.http import ExternalEvaluatorClient
 from dse.evaluator.service import (
     EvaluatorServiceApplication,
     EvaluatorServiceConfig,
+    EvaluatorTLSServer,
 )
 from dse.evaluator.suite_store import HiddenSuiteBundle, HiddenSuiteError
 from dse.evaluator.worker import HardenedEvaluatorWorker
@@ -321,6 +323,82 @@ def test_external_client_round_trips_through_service_application() -> None:
     asyncio.run(exercise())
 
 
+
+def _tls_server(
+    application: EvaluatorServiceApplication,
+) -> EvaluatorTLSServer:
+    context = ssl.SSLContext(
+        ssl.PROTOCOL_TLS_SERVER
+    )
+    context.minimum_version = (
+        ssl.TLSVersion.TLSv1_2
+    )
+    return EvaluatorTLSServer(
+        application=application,
+        ssl_context=context,
+        request_timeout_seconds=1.0,
+        operation_timeout_seconds=5.0,
+        max_connections=2,
+        max_concurrent_operations=1,
+        max_header_bytes=4096,
+    )
+
+
+def test_tls_parser_accepts_one_strict_http11_request() -> None:
+    application = _application()
+    server = _tls_server(application)
+    raw = (
+        b"POST /v1/handshake HTTP/1.1\r\n"
+        b"Host: evaluator.example\r\n"
+        + f"Authorization: Bearer {AUTH_FIXTURE}\r\n".encode()
+        + b"Content-Type: application/json\r\n"
+        + b"Content-Length: 2\r\n\r\n"
+    )
+
+    async def parse():
+        reader = asyncio.StreamReader(
+            limit=4097
+        )
+        reader.feed_data(raw)
+        reader.feed_eof()
+        return await server._read_request_head(
+            reader
+        )
+
+    parsed = asyncio.run(parse())
+
+    assert parsed.method == "POST"
+    assert parsed.path == "/v1/handshake"
+    assert parsed.content_length == 2
+    assert parsed.headers["host"] == "evaluator.example"
+
+
+def test_tls_parser_rejects_duplicate_headers() -> None:
+    application = _application()
+    server = _tls_server(application)
+    raw = (
+        b"POST /v1/handshake HTTP/1.1\r\n"
+        b"Host: evaluator.example\r\n"
+        b"Content-Type: application/json\r\n"
+        b"Content-Length: 2\r\n"
+        b"Content-Length: 2\r\n\r\n"
+    )
+
+    async def parse():
+        reader = asyncio.StreamReader(
+            limit=4097
+        )
+        reader.feed_data(raw)
+        reader.feed_eof()
+        return await server._read_request_head(
+            reader
+        )
+
+    response = asyncio.run(parse())
+
+    assert response.status == 400
+    assert b"duplicate_header" in response.body
+
 def test_service_config_requires_operator_secrets_without_repr_leak(
     tmp_path: Path,
     monkeypatch,
@@ -335,7 +413,7 @@ def test_service_config_requires_operator_secrets_without_repr_leak(
     monkeypatch.setenv("DSE_EVALUATOR_TLS_CERT", str(cert))
     monkeypatch.setenv("DSE_EVALUATOR_TLS_KEY", str(key))
     monkeypatch.setenv("DSE_EVALUATOR_SUITE_ROOT", str(suite_root))
-    monkeypatch.setenv("DSE_EVALUATOR_BEARER_AUTH_FIXTURE", AUTH_FIXTURE)
+    monkeypatch.setenv("DSE_EVALUATOR_BEARER_TOKEN", AUTH_FIXTURE)
     monkeypatch.setenv(
         "DSE_EVALUATOR_WORKER_BUILD_SHA256",
         WORKER_BUILD,
