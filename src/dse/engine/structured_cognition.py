@@ -1,3 +1,5 @@
+import hashlib
+
 from dse.contracts.agent import LifecycleState
 from dse.contracts.event import WorldEvent, make_event
 from dse.contracts.experiment import ExperimentManifest
@@ -89,6 +91,18 @@ async def advance_structured_cognition_tick(
         context["social_mode"] = manifest.runtime.social.mode
         context["social_operations_remaining"] = (
             agent.resources.social_operations_remaining
+        )
+
+        opportunity = manifest.functional_opportunity
+        context["functional_opportunity"] = (
+            opportunity.model_dump(mode="json")
+            if opportunity.enabled
+            else None
+        )
+        context["functional_submission"] = (
+            agent.functional_submission.current.model_dump(mode="json")
+            if agent.functional_submission.current is not None
+            else None
         )
 
         if manifest.runtime.text_culture.enabled:
@@ -232,6 +246,7 @@ async def advance_structured_cognition_tick(
                     agent_id=agent_id,
                     cognition_event=cognition_event,
                     decision=response.decision,
+                    manifest=manifest,
                 )
             )
 
@@ -496,6 +511,7 @@ def _emit_action_events(
     agent_id: str,
     cognition_event: WorldEvent,
     decision,
+    manifest: ExperimentManifest,
 ) -> list[WorldEvent]:
     agent = world.agents[agent_id]
     proposal = decision.action
@@ -542,13 +558,14 @@ def _emit_action_events(
             payload={"amount": 1},
         )
     ]
+    action_id = f"{agent_id}:{cognition_event.event_id}:action"
     events.append(
         _emit(
             world,
             event_type="agent.action.proposed",
             actor_agent_id=agent_id,
             payload={
-                "action_id": f"{agent_id}:{cognition_event.event_id}:action",
+                "action_id": action_id,
                 "created_tick": world.tick,
                 "source_event_id": cognition_event.event_id,
                 "goal_id": str(active_goal["goal_id"]),
@@ -567,6 +584,54 @@ def _emit_action_events(
             },
         )
     )
+
+    if proposal.kind == "functional_submit":
+        opportunity = manifest.functional_opportunity
+        content = proposal.draft_content or ""
+        encoded = content.encode("utf-8")
+        rejection_reason = None
+        if not opportunity.enabled:
+            rejection_reason = "functional_opportunity_disabled"
+        elif proposal.target != opportunity.submission_path:
+            rejection_reason = "functional_submission_path_mismatch"
+        elif len(encoded) > opportunity.max_submission_bytes:
+            rejection_reason = "functional_submission_too_large"
+
+        if rejection_reason is not None:
+            events.append(
+                _emit(
+                    world,
+                    event_type="functional.submission.rejected",
+                    actor_agent_id=agent_id,
+                    payload={
+                        "action_id": action_id,
+                        "reason": rejection_reason,
+                    },
+                )
+            )
+        else:
+            events.append(
+                _emit(
+                    world,
+                    event_type="functional.submission.published",
+                    actor_agent_id=agent_id,
+                    payload={
+                        "submission_id": (
+                            f"{agent_id}:g{agent.generation}:"
+                            f"{cognition_event.event_id}"
+                        ),
+                        "action_id": action_id,
+                        "created_tick": world.tick,
+                        "agent_id": agent_id,
+                        "generation": agent.generation,
+                        "path": proposal.target,
+                        "content": content,
+                        "content_sha256": hashlib.sha256(encoded).hexdigest(),
+                        "content_bytes": len(encoded),
+                    },
+                )
+            )
+
     return events
 
 
