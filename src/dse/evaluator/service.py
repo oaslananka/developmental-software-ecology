@@ -444,7 +444,7 @@ class EvaluatorServiceConfig:
     tls_key: Path
     suite_root: Path
     bearer_token: str = field(repr=False)
-    worker_build_sha256: str = ""
+    worker_build_sha256: str
     service_id: str = "dse-evaluator"
     runner_version: str = "m18.3-service-1"
     runtime_image: str = (
