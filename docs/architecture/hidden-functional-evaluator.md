@@ -27,6 +27,28 @@ Hidden test source, prompts, expected outputs, fixtures and case-level diagnosti
 
 Only a suite identity and cryptographic hash are manifest-visible.
 
+## Public opportunity binding
+
+M20 separates the public task contract from the private held-out cases.
+
+Strict V0.1 runs use:
+
+```text
+spec_id     = dse-utility-kernel-v0.1
+spec_sha256 = 7284687308bd4dbdef7a7558349bbdd9718a6f788b155fb6d77634731e6f3967
+aggregation = population_any
+```
+
+The exact semantics are public in
+`docs/research/v0.1-functional-opportunity.md`.
+
+The evaluator handshake protocol is v0.2. The client request, worker-side
+private suite manifest, culture snapshot, evaluation plan and persisted report
+must all carry the same opportunity identity/hash/aggregation.
+
+A mismatch is a protocol/evidence failure; it must not be interpreted as a low
+functional score.
+
 ## Separate evaluation config
 
 The evaluator is top-level experiment configuration rather than daily agent runtime.
