@@ -1,5 +1,6 @@
 schema_version: "0.1"
 evaluation_profile: "v0_1-hidden-functional-suite"
+functional_opportunity_profile: "v0_1-functional-submission"
 
 study:
   enforce_condition_contract: true
@@ -50,7 +51,7 @@ agents:
     max_active_goals: 1
   actions:
     enabled: true
-    proposals_per_cycle: 4
+    proposals_per_cycle: 5
   tool_broker:
     enabled: false
     executions_per_cycle: 0
