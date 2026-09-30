@@ -35,6 +35,9 @@ RUNTIME_IMAGE = os.environ.get(
     "gcr.io/distroless/python3-debian13:nonroot",
 )
 SUITE_ID = "m18-2-public-fixture-suite"
+OPPORTUNITY_SPEC_ID = "m20-public-fixture-spec"
+OPPORTUNITY_SPEC_HASH = "c" * 64
+OPPORTUNITY_AGGREGATION = "population_any"
 SUITE_SOURCE = b"""import json
 
 request = DSE_REQUEST
@@ -74,6 +77,9 @@ def _bundle() -> HiddenSuiteBundle:
     return HiddenSuiteBundle(
         suite_id=SUITE_ID,
         suite_hash=hashlib.sha256(SUITE_SOURCE).hexdigest(),
+        opportunity_spec_id=OPPORTUNITY_SPEC_ID,
+        opportunity_spec_hash=OPPORTUNITY_SPEC_HASH,
+        opportunity_aggregation=OPPORTUNITY_AGGREGATION,
         total_cases=1,
         payload=SUITE_SOURCE,
     )
@@ -113,6 +119,9 @@ def _request(
         world_sequence=11,
         world_snapshot_hash="a" * 64,
         culture_snapshot_hash=culture_hash,
+        opportunity_spec_id=OPPORTUNITY_SPEC_ID,
+        opportunity_spec_hash=OPPORTUNITY_SPEC_HASH,
+        opportunity_aggregation=OPPORTUNITY_AGGREGATION,
         artifacts=[artifact],
     )
     plan = HiddenEvaluationPlan(
@@ -123,6 +132,9 @@ def _request(
         world_sequence=snapshot.world_sequence,
         world_snapshot_hash=snapshot.world_snapshot_hash,
         culture_snapshot_hash=snapshot.culture_snapshot_hash,
+        opportunity_spec_id=snapshot.opportunity_spec_id,
+        opportunity_spec_hash=snapshot.opportunity_spec_hash,
+        opportunity_aggregation=snapshot.opportunity_aggregation,
         suite_id=bundle.suite_id,
         suite_hash=bundle.suite_hash,
         artifact_bindings=[binding],
@@ -195,6 +207,9 @@ def test_gvisor_backend_produces_runtime_measured_evidence_and_evaluates() -> No
         experiment_id="m18-2-runtime-integration",
         suite_id=bundle.suite_id,
         suite_hash=bundle.suite_hash,
+        opportunity_spec_id=bundle.opportunity_spec_id,
+        opportunity_spec_hash=bundle.opportunity_spec_hash,
+        opportunity_aggregation=bundle.opportunity_aggregation,
         policy=policy,
         policy_hash=policy_hash,
     )

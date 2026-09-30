@@ -28,6 +28,16 @@ def build_culture_evaluation_snapshot(
     manifest: ExperimentManifest,
 ) -> CultureEvaluationSnapshot:
     config = manifest.evaluation
+    opportunity = manifest.functional_opportunity
+    if (
+        not opportunity.enabled
+        or opportunity.spec_id is None
+        or opportunity.spec_sha256 is None
+    ):
+        raise ValueError(
+            "functional opportunity is not fully configured"
+        )
+
     artifacts: list[EvaluationArtifactInput] = []
     total_bytes = 0
 
@@ -76,6 +86,9 @@ def build_culture_evaluation_snapshot(
         world_sequence=world.last_sequence_number,
         world_snapshot_hash=world_state_hash(world),
         culture_snapshot_hash=culture_snapshot_hash,
+        opportunity_spec_id=opportunity.spec_id,
+        opportunity_spec_hash=opportunity.spec_sha256,
+        opportunity_aggregation=opportunity.aggregation,
         artifacts=artifacts,
     )
 
@@ -96,6 +109,9 @@ def build_hidden_evaluation_plan(
             "world_sequence": snapshot.world_sequence,
             "world_snapshot_hash": snapshot.world_snapshot_hash,
             "culture_snapshot_hash": snapshot.culture_snapshot_hash,
+            "opportunity_spec_id": snapshot.opportunity_spec_id,
+            "opportunity_spec_hash": snapshot.opportunity_spec_hash,
+            "opportunity_aggregation": snapshot.opportunity_aggregation,
             "suite_id": config.suite_id,
             "suite_hash": config.suite_hash,
         }
@@ -109,6 +125,9 @@ def build_hidden_evaluation_plan(
         world_sequence=snapshot.world_sequence,
         world_snapshot_hash=snapshot.world_snapshot_hash,
         culture_snapshot_hash=snapshot.culture_snapshot_hash,
+        opportunity_spec_id=snapshot.opportunity_spec_id,
+        opportunity_spec_hash=snapshot.opportunity_spec_hash,
+        opportunity_aggregation=snapshot.opportunity_aggregation,
         suite_id=config.suite_id,
         suite_hash=config.suite_hash,
         artifact_bindings=bindings,

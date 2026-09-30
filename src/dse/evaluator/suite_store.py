@@ -17,6 +17,9 @@ class HiddenSuiteError(ValueError):
 class HiddenSuiteBundle:
     suite_id: str
     suite_hash: str
+    opportunity_spec_id: str
+    opportunity_spec_hash: str
+    opportunity_aggregation: str
     total_cases: int
     payload: bytes
 
@@ -61,9 +64,39 @@ class FilesystemHiddenSuiteStore:
         if total_cases < 1:
             raise HiddenSuiteError("hidden suite total_cases must be positive")
 
+        opportunity_spec_id = metadata.get("opportunity_spec_id")
+        opportunity_spec_hash = metadata.get("opportunity_spec_hash")
+        opportunity_aggregation = metadata.get("opportunity_aggregation")
+        if (
+            not isinstance(opportunity_spec_id, str)
+            or not opportunity_spec_id
+            or len(opportunity_spec_id) > 160
+        ):
+            raise HiddenSuiteError(
+                "hidden suite opportunity_spec_id is invalid"
+            )
+        if (
+            not isinstance(opportunity_spec_hash, str)
+            or len(opportunity_spec_hash) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in opportunity_spec_hash
+            )
+        ):
+            raise HiddenSuiteError(
+                "hidden suite opportunity_spec_hash is invalid"
+            )
+        if opportunity_aggregation != "population_any":
+            raise HiddenSuiteError(
+                "hidden suite opportunity_aggregation is invalid"
+            )
+
         return HiddenSuiteBundle(
             suite_id=suite_id,
             suite_hash=hashlib.sha256(payload).hexdigest(),
+            opportunity_spec_id=opportunity_spec_id,
+            opportunity_spec_hash=opportunity_spec_hash,
+            opportunity_aggregation=opportunity_aggregation,
             total_cases=total_cases,
             payload=payload,
         )

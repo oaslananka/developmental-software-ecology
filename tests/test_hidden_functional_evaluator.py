@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -176,6 +177,17 @@ def test_primary_evaluator_config_is_separate_from_agent_runtime() -> None:
     assert manifest.evaluation.sandbox_policy.backend == "external-hardened"
     assert manifest.evaluation.suite_id == "v0_1-hidden-functional-suite"
     assert len(manifest.evaluation.suite_hash or "") == 64
+    opportunity = manifest.functional_opportunity
+    _check(opportunity.spec_id == "dse-utility-kernel-v0.1")
+    _check(
+        opportunity.spec_sha256
+        == "8c5dbb384df0bb73e2b8db6dd9b8a97cf31ef904ecca8a5bf4411f5e8e696439"
+    )
+    _check(opportunity.aggregation == "population_any")
+    _check(
+        hashlib.sha256(opportunity.public_brief.encode("utf-8")).hexdigest()
+        == opportunity.spec_sha256
+    )
 
 
 def test_evaluator_snapshot_contains_only_current_generation_submissions() -> None:
@@ -192,6 +204,10 @@ def test_evaluator_snapshot_contains_only_current_generation_submissions() -> No
     _check(expected_submissions == 5)
     _check(len(snapshot.artifacts) == expected_submissions)
     _check(snapshot.world_snapshot_hash == world_state_hash(world))
+    opportunity = manifest.functional_opportunity
+    _check(snapshot.opportunity_spec_id == opportunity.spec_id)
+    _check(snapshot.opportunity_spec_hash == opportunity.spec_sha256)
+    _check(snapshot.opportunity_aggregation == opportunity.aggregation)
 
     for artifact in snapshot.artifacts:
         agent = world.agents[artifact.creator_agent_id]
@@ -220,6 +236,13 @@ def test_hidden_evaluation_is_read_only_and_sanitizes_persistable_report() -> No
     assert outcome.report.passed_cases == 4
     assert outcome.report.failed_cases == 0
     assert outcome.report.artifact_bindings
+    opportunity = manifest.functional_opportunity
+    _check(outcome.report.opportunity_spec_id == opportunity.spec_id)
+    _check(outcome.report.opportunity_spec_hash == opportunity.spec_sha256)
+    _check(
+        outcome.report.opportunity_aggregation
+        == opportunity.aggregation
+    )
 
     assert world_state_hash(world) == before_hash
     assert world.last_sequence_number == before_sequence
@@ -389,6 +412,45 @@ def test_external_hardened_report_evidence_can_clear_runtime_gate() -> None:
     assert readiness.missing_surfaces == []
 
 
+def test_hardened_report_with_opportunity_spec_drift_cannot_clear_gate() -> None:
+    manifest = load_manifest(E_MANIFEST)
+    world = create_world(manifest)
+    _advance_e_world(world, manifest, 120)
+
+    report = _evaluate(
+        world,
+        manifest,
+        RecordingHiddenEvaluator(),
+    ).report
+    if report is None:
+        raise AssertionError("fixture evaluation did not produce a report")
+
+    drifted = report.model_copy(
+        update={
+            "runner_kind": "external-hardened",
+            "attestation_evidence_kind": "runtime-measured",
+            "worker_build_sha256": "1" * 64,
+            "runtime_build_sha256": "2" * 64,
+            "opportunity_spec_hash": "b" * 64,
+        }
+    )
+    drifted = drifted.model_copy(
+        update={
+            "result_hash": functional_evaluation_report_hash(drifted),
+        }
+    )
+
+    readiness = assess_condition_runtime_readiness(
+        manifest,
+        drifted,
+    )
+    _check(readiness.research_runtime_ready is False)
+    _check(
+        readiness.missing_surfaces
+        == ["attested_hardened_evaluator_runtime"]
+    )
+
+
 def test_production_evaluator_package_has_only_approved_execution_backend() -> None:
     evaluator_files = sorted(
         path.name
@@ -471,6 +533,10 @@ def test_sanitized_evaluation_report_roundtrips_through_postgres(
 
     assert restored == stored == report
     assert functional_evaluation_report_hash(restored) == restored.result_hash
+    opportunity = manifest.functional_opportunity
+    _check(restored.opportunity_spec_id == opportunity.spec_id)
+    _check(restored.opportunity_spec_hash == opportunity.spec_sha256)
+    _check(restored.opportunity_aggregation == opportunity.aggregation)
     assert world_state_hash(world) == before_hash
 
     serialized = json.dumps(

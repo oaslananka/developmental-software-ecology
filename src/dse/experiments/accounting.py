@@ -47,6 +47,9 @@ class ComputeBudgetFingerprint(StrictModel):
     sandbox_enabled: bool
     web_enabled: bool
     functional_opportunity_profile: str
+    functional_opportunity_spec_id: str | None
+    functional_opportunity_spec_hash: str | None
+    functional_opportunity_aggregation: str
     functional_submission_path: str
     functional_submission_max_bytes: int
 
@@ -128,6 +131,15 @@ def compute_budget_fingerprint(
         web_enabled=manifest.runtime.web_enabled,
         functional_opportunity_profile=(
             manifest.functional_opportunity_profile
+        ),
+        functional_opportunity_spec_id=(
+            manifest.functional_opportunity.spec_id
+        ),
+        functional_opportunity_spec_hash=(
+            manifest.functional_opportunity.spec_sha256
+        ),
+        functional_opportunity_aggregation=(
+            manifest.functional_opportunity.aggregation
         ),
         functional_submission_path=(
             manifest.functional_opportunity.submission_path

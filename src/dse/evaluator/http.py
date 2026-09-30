@@ -127,9 +127,18 @@ class ExternalEvaluatorClient:
         manifest: ExperimentManifest,
     ) -> ExternalHiddenEvaluatorSession:
         config = manifest.evaluation
+        opportunity = manifest.functional_opportunity
         if not config.enabled or config.suite_id is None or config.suite_hash is None:
             raise ExternalEvaluatorProtocolError(
                 "manifest does not configure hidden evaluation"
+            )
+        if (
+            not opportunity.enabled
+            or opportunity.spec_id is None
+            or opportunity.spec_sha256 is None
+        ):
+            raise ExternalEvaluatorProtocolError(
+                "manifest does not configure functional opportunity"
             )
 
         policy_hash = sandbox_policy_hash_for(config.sandbox_policy)
@@ -137,6 +146,9 @@ class ExternalEvaluatorClient:
             "experiment_id": manifest.experiment.id,
             "suite_id": config.suite_id,
             "suite_hash": config.suite_hash,
+            "opportunity_spec_id": opportunity.spec_id,
+            "opportunity_spec_hash": opportunity.spec_sha256,
+            "opportunity_aggregation": opportunity.aggregation,
             "policy_hash": policy_hash,
         }
         request = ExternalEvaluatorHandshakeRequest(
@@ -144,6 +156,9 @@ class ExternalEvaluatorClient:
             experiment_id=manifest.experiment.id,
             suite_id=config.suite_id,
             suite_hash=config.suite_hash,
+            opportunity_spec_id=opportunity.spec_id,
+            opportunity_spec_hash=opportunity.spec_sha256,
+            opportunity_aggregation=opportunity.aggregation,
             policy=config.sandbox_policy,
             policy_hash=policy_hash,
         )
@@ -300,6 +315,21 @@ def _handshake_binding_errors(
         ("request_id", request.request_id, response.request_id),
         ("suite_id", request.suite_id, response.suite_id),
         ("suite_hash", request.suite_hash, response.suite_hash),
+        (
+            "opportunity_spec_id",
+            request.opportunity_spec_id,
+            response.opportunity_spec_id,
+        ),
+        (
+            "opportunity_spec_hash",
+            request.opportunity_spec_hash,
+            response.opportunity_spec_hash,
+        ),
+        (
+            "opportunity_aggregation",
+            request.opportunity_aggregation,
+            response.opportunity_aggregation,
+        ),
         ("policy_hash", request.policy_hash, response.attestation.policy_hash),
     )
     return [
@@ -315,6 +345,21 @@ def _validate_session_request(
 ) -> None:
     checks = (
         ("suite_hash", handshake.suite_hash, request.plan.suite_hash),
+        (
+            "opportunity_spec_id",
+            handshake.opportunity_spec_id,
+            request.plan.opportunity_spec_id,
+        ),
+        (
+            "opportunity_spec_hash",
+            handshake.opportunity_spec_hash,
+            request.plan.opportunity_spec_hash,
+        ),
+        (
+            "opportunity_aggregation",
+            handshake.opportunity_aggregation,
+            request.plan.opportunity_aggregation,
+        ),
         (
             "policy_hash",
             handshake.attestation.policy_hash,

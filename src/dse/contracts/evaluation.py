@@ -45,6 +45,13 @@ class EvaluationWorldBinding(StrictModel):
         max_length=64,
         pattern="^[0-9a-f]{64}$",
     )
+    opportunity_spec_id: str = Field(min_length=1, max_length=160)
+    opportunity_spec_hash: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern="^[0-9a-f]{64}$",
+    )
+    opportunity_aggregation: Literal["population_any"]
 
 
 class CultureEvaluationSnapshot(EvaluationWorldBinding):

@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -39,6 +40,16 @@ def _check(
 ) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+class CapturingFakeProvider(DeterministicFakeProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.requests = []
+
+    async def generate(self, request):
+        self.requests.append(request)
+        return await super().generate(request)
 
 
 def _manifests() -> dict[str, ExperimentManifest]:
@@ -111,8 +122,65 @@ def test_all_primary_condition_manifests_share_compute_budget() -> None:
             == "v0_1-functional-submission"
         )
         _check(manifest.functional_opportunity.enabled is True)
-        _check(manifest.functional_opportunity.submission_path == "submission.py")
-        _check(manifest.functional_opportunity.entrypoint == "solve")
+        opportunity = manifest.functional_opportunity
+        _check(opportunity.submission_path == "submission.py")
+        _check(opportunity.entrypoint == "solve")
+        _check(opportunity.max_submission_bytes == 4000)
+        _check(opportunity.spec_id == "dse-utility-kernel-v0.1")
+        _check(
+            opportunity.spec_sha256
+            == "8c5dbb384df0bb73e2b8db6dd9b8a97cf31ef904ecca8a5bf4411f5e8e696439"
+        )
+        _check(opportunity.aggregation == "population_any")
+        _check(
+            hashlib.sha256(
+                opportunity.public_brief.encode("utf-8")
+            ).hexdigest()
+            == opportunity.spec_sha256
+        )
+        for task in (
+            "stable_unique",
+            "range_pack",
+            "bucket_total",
+            "rank_select",
+            "dependency_layers",
+            "route_min",
+            "counter_patch",
+            "window_sum",
+        ):
+            _check(task in opportunity.public_brief)
+
+
+def test_agent_context_exposes_opportunity_without_evaluator_metadata() -> None:
+    manifest = load_manifest(CONDITION_PATHS["P"])
+    world = create_world(manifest)
+    provider = CapturingFakeProvider()
+
+    asyncio.run(
+        advance_structured_cognition_ticks(
+            world,
+            manifest,
+            provider,
+            20,
+        )
+    )
+
+    _check(len(provider.requests) == 5)
+    expected_keys = {
+        "profile_id",
+        "spec_id",
+        "submission_path",
+        "entrypoint",
+        "max_submission_bytes",
+        "public_brief",
+    }
+    for request in provider.requests:
+        opportunity = request.context["functional_opportunity"]
+        _check(set(opportunity) == expected_keys)
+        brief = str(opportunity["public_brief"]).lower()
+        _check("hidden evaluator" not in brief)
+        _check("assessment" not in brief)
+        _check("population_any" not in brief)
 
 
 def test_condition_contract_rejects_treatment_drift() -> None:

@@ -62,9 +62,12 @@ The canonical profile exposes only a public packaging contract:
 This profile is deliberately **not** the hidden suite. It is safe to place in
 agent cognition because it contains no held-out case material.
 
-A later experiment-design step must still freeze the substantive public
-environment/problem family that gives `solve(payload)` scientific meaning.
-M19 does not manufacture that missing task semantics.
+M19 deliberately stopped at this packaging boundary.
+
+M20 supersedes that remaining boundary by freezing the substantive public
+problem family as **DSE Utility Kernel v0.1**. The canonical task semantics,
+spec identity/hash and population aggregation are defined in
+`docs/research/v0.1-functional-opportunity.md`.
 
 ## Submission state
 
@@ -157,8 +160,6 @@ measurement-only shortcut.
 
 It does not yet prove:
 
-- the substantive public environmental problem family is scientifically
-  appropriate;
 - the canonical private V0.1 suite exists;
 - the currently pinned suite hash has recovered provenance;
 - the private suite has passed real TLS -> worker -> gVisor acceptance;

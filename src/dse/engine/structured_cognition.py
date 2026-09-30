@@ -95,7 +95,14 @@ async def advance_structured_cognition_tick(
 
         opportunity = manifest.functional_opportunity
         context["functional_opportunity"] = (
-            opportunity.model_dump(mode="json")
+            {
+                "profile_id": opportunity.profile_id,
+                "spec_id": opportunity.spec_id,
+                "submission_path": opportunity.submission_path,
+                "entrypoint": opportunity.entrypoint,
+                "max_submission_bytes": opportunity.max_submission_bytes,
+                "public_brief": opportunity.public_brief,
+            }
             if opportunity.enabled
             else None
         )
