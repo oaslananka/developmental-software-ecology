@@ -64,19 +64,19 @@ class EvaluatorServiceApplication:
         self,
         *,
         worker: HardenedEvaluatorWorker,
-        bearer_token: str,
+        authorization_value: str,
         max_request_bytes: int = 2_097_152,
     ) -> None:
-        if len(bearer_token) < 32:
+        if len(authorization_value) < 32:
             raise ValueError(
-                "bearer_token must contain at least 32 characters"
+                "authorization_value must contain at least 32 characters"
             )
         if max_request_bytes < 1024:
             raise ValueError(
                 "max_request_bytes must be at least 1024"
             )
         self.worker = worker
-        self._bearer_token = bearer_token
+        self._authorization_value = authorization_value
         self.max_request_bytes = max_request_bytes
 
     def preflight(
@@ -227,7 +227,7 @@ class EvaluatorServiceApplication:
             return False
         return hmac.compare_digest(
             token.encode("utf-8"),
-            self._bearer_token.encode("utf-8"),
+            self._authorization_value.encode("utf-8"),
         )
 
 
@@ -458,18 +458,14 @@ class EvaluatorTLSServer:
                 await self._write_response(
                     writer,
                     EvaluatorServiceResponse.json(
-                        HTTPStatus.BAD_REQUEST,
-                        {"error": "invalid_request"},
+                        HTTPStatus.SERVICE_UNAVAILABLE,
+                        {"error": "evaluator_unavailable"},
                     ),
                 )
-            except Exception:
-                pass
+            except (ConnectionError, OSError):
+                return
         finally:
             writer.close()
-            try:
-                await writer.wait_closed()
-            except (ConnectionError, OSError):
-                pass
 
     async def _read_request_head(
         self,
@@ -642,7 +638,7 @@ class EvaluatorServiceConfig:
     tls_cert: Path
     tls_key: Path
     suite_root: Path
-    bearer_token: str = field(repr=False)
+    authorization_value: str = field(repr=False)
     worker_build_sha256: str
     service_id: str = "dse-evaluator"
     runner_version: str = "m18.3-service-1"
@@ -680,7 +676,7 @@ class EvaluatorServiceConfig:
             suite_root=_required_directory(
                 "DSE_EVALUATOR_SUITE_ROOT"
             ),
-            bearer_token=_required_secret(
+            authorization_value=_required_secret(
                 "DSE_EVALUATOR_BEARER_TOKEN"
             ),
             worker_build_sha256=_required_sha256(
@@ -756,7 +752,7 @@ def build_service(
     )
     return EvaluatorServiceApplication(
         worker=worker,
-        bearer_token=config.bearer_token,
+        authorization_value=config.authorization_value,
         max_request_bytes=config.max_request_bytes,
     )
 
