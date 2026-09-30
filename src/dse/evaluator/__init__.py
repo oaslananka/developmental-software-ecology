@@ -1,6 +1,10 @@
 """Hidden functional evaluator interfaces, transport and worker core."""
 
 from dse.evaluator.base import HiddenEvaluatorRunner
+from dse.evaluator.gvisor_docker import (
+    GVisorBackendError,
+    GVisorDockerBackend,
+)
 from dse.evaluator.http import (
     ExternalEvaluatorClient,
     ExternalEvaluatorProtocolError,
@@ -26,6 +30,8 @@ __all__ = [
     "ExternalEvaluatorTransportError",
     "ExternalHiddenEvaluatorSession",
     "FilesystemHiddenSuiteStore",
+    "GVisorBackendError",
+    "GVisorDockerBackend",
     "HardenedEvaluationBackend",
     "HardenedEvaluatorWorker",
     "HiddenEvaluatorRunner",
