@@ -293,7 +293,7 @@ def assess_condition_runtime_readiness(
         missing.remove(evidence_gate)
         notes.append(
             "A completed external-hardened hidden evaluation matches the "
-            "manifest-pinned suite and sandbox policy."
+            "manifest-pinned opportunity spec, suite and sandbox policy."
         )
 
     return ConditionSupportReport(
@@ -313,10 +313,14 @@ def _is_valid_hardened_evaluation_evidence(
         return False
 
     evaluation = manifest.evaluation
+    opportunity = manifest.functional_opportunity
     if (
         not evaluation.enabled
         or evaluation.suite_id is None
         or evaluation.suite_hash is None
+        or not opportunity.enabled
+        or opportunity.spec_id is None
+        or opportunity.spec_sha256 is None
     ):
         return False
 
@@ -333,6 +337,9 @@ def _is_valid_hardened_evaluation_evidence(
             report.condition == manifest.experiment.condition,
             report.suite_id == evaluation.suite_id,
             report.suite_hash == evaluation.suite_hash,
+            report.opportunity_spec_id == opportunity.spec_id,
+            report.opportunity_spec_hash == opportunity.spec_sha256,
+            report.opportunity_aggregation == opportunity.aggregation,
             report.policy_hash == expected_policy_hash,
             report.backend == evaluation.sandbox_policy.backend,
             report.runner_kind == "external-hardened",
