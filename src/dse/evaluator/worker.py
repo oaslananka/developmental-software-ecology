@@ -94,6 +94,12 @@ class HardenedEvaluatorWorker:
         suite = self.suite_store.load(request.suite_id)
         if suite.suite_hash != request.suite_hash:
             raise EvaluatorWorkerError("hidden suite hash mismatch")
+        _require_suite_opportunity_binding(
+            suite,
+            spec_id=request.opportunity_spec_id,
+            spec_hash=request.opportunity_spec_hash,
+            aggregation=request.opportunity_aggregation,
+        )
 
         attestation = await self._admitted_attestation(
             request.policy,
@@ -108,6 +114,9 @@ class HardenedEvaluatorWorker:
             service_id=self.service_id,
             suite_id=suite.suite_id,
             suite_hash=suite.suite_hash,
+            opportunity_spec_id=suite.opportunity_spec_id,
+            opportunity_spec_hash=suite.opportunity_spec_hash,
+            opportunity_aggregation=suite.opportunity_aggregation,
             runner_kind=self.runner_kind,
             runner_version=self.runner_version,
             worker_build_sha256=self.worker_build_sha256,
@@ -207,6 +216,12 @@ class HardenedEvaluatorWorker:
             raise EvaluatorWorkerError("evaluation suite hash mismatch")
         if request.plan.suite_id != suite.suite_id:
             raise EvaluatorWorkerError("evaluation suite id mismatch")
+        _require_suite_opportunity_binding(
+            suite,
+            spec_id=request.plan.opportunity_spec_id,
+            spec_hash=request.plan.opportunity_spec_hash,
+            aggregation=request.plan.opportunity_aggregation,
+        )
 
         identity_fields = (
             "experiment_id",
@@ -246,6 +261,34 @@ class HardenedEvaluatorWorker:
         )
         if culture_hash != request.snapshot.culture_snapshot_hash:
             raise EvaluatorWorkerError("culture snapshot hash mismatch")
+
+
+def _require_suite_opportunity_binding(
+    suite: HiddenSuiteBundle,
+    *,
+    spec_id: str,
+    spec_hash: str,
+    aggregation: str,
+) -> None:
+    checks = (
+        ("opportunity_spec_id", suite.opportunity_spec_id, spec_id),
+        ("opportunity_spec_hash", suite.opportunity_spec_hash, spec_hash),
+        (
+            "opportunity_aggregation",
+            suite.opportunity_aggregation,
+            aggregation,
+        ),
+    )
+    mismatches = [
+        field
+        for field, expected, actual in checks
+        if expected != actual
+    ]
+    if mismatches:
+        raise EvaluatorWorkerError(
+            "hidden suite opportunity binding mismatch: "
+            + ", ".join(mismatches)
+        )
 
 
 def _require_same_attestation(
