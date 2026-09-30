@@ -48,6 +48,27 @@ The service:
 
 Unauthorized responses are generic and do not parse or echo the request body.
 
+## TLS ingress and concurrency
+
+The production server uses one persistent asyncio event loop and
+`asyncio.start_server(..., ssl=...)`; it does not create a new event loop per
+request and does not use Python's development-oriented `http.server`.
+
+The ingress is deliberately narrow:
+
+- one HTTP/1.1 request per TLS connection;
+- a bounded connection count and listen backlog;
+- a bounded header byte limit;
+- duplicate headers are rejected;
+- obsolete folded headers are rejected;
+- absolute-form/non-origin request targets are rejected;
+- every response closes the connection.
+
+Long evaluator work does not block acceptance/parsing of unrelated
+connections. A separate operation semaphore bounds concurrent hardened
+handshake/evaluation work; the default is one expensive evaluator operation at
+a time.
+
 ## Request bounding
 
 The server rejects requests before body parsing when:
@@ -113,7 +134,11 @@ DSE_EVALUATOR_SERVICE_ID
 DSE_EVALUATOR_RUNNER_VERSION
 DSE_GVISOR_RUNTIME_IMAGE
 DSE_EVALUATOR_MAX_REQUEST_BYTES
+DSE_EVALUATOR_MAX_HEADER_BYTES
 DSE_EVALUATOR_REQUEST_TIMEOUT_SECONDS
+DSE_EVALUATOR_OPERATION_TIMEOUT_SECONDS
+DSE_EVALUATOR_MAX_CONNECTIONS
+DSE_EVALUATOR_MAX_CONCURRENT_OPERATIONS
 ```
 
 The service defaults to `127.0.0.1:8443`. Operators that expose it beyond
