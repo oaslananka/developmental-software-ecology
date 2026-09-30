@@ -25,7 +25,9 @@ from dse.experiments.conditions import assess_condition_runtime_readiness
 
 
 E_MANIFEST = Path("experiments/v0_1/conditions/e-executable-culture.yaml")
-TOKEN = "m18-3-test-token-" + ("x" * 32)
+AUTH_FIXTURE = hashlib.sha256(
+    b"dse-m18-3-public-auth-fixture"
+).hexdigest()
 WORKER_BUILD = "1" * 64
 RUNTIME_BUILD = "2" * 64
 SUITE_PAYLOAD = b"M18_3_PUBLIC_SERVICE_FIXTURE"
@@ -140,7 +142,7 @@ def _application(
     )
     return EvaluatorServiceApplication(
         worker=worker,
-        bearer_token=TOKEN,
+        bearer_token=AUTH_FIXTURE,
         max_request_bytes=max_request_bytes,
     )
 
@@ -165,7 +167,7 @@ def test_service_rejects_unauthorized_requests_without_echoing_body() -> None:
 
 def test_service_rejects_unbounded_or_invalid_transport_shapes() -> None:
     application = _application(max_request_bytes=1024)
-    authorization = f"Bearer {TOKEN}"
+    authorization = f"Bearer {AUTH_FIXTURE}"
 
     cases = [
         (
@@ -241,7 +243,7 @@ def test_worker_rejection_is_sanitized() -> None:
             method="POST",
             path="/v1/handshake",
             headers={
-                "Authorization": f"Bearer {TOKEN}",
+                "Authorization": f"Bearer {AUTH_FIXTURE}",
                 "Content-Type": "application/json",
             },
             body=b"""{
@@ -286,7 +288,7 @@ def test_external_client_round_trips_through_service_application() -> None:
         ) as http_client:
             client = ExternalEvaluatorClient(
                 base_url="https://evaluator.example",
-                bearer_token=TOKEN,
+                bearer_token=AUTH_FIXTURE,
                 client=http_client,
             )
             session = await client.open_session(manifest)
@@ -333,7 +335,7 @@ def test_service_config_requires_operator_secrets_without_repr_leak(
     monkeypatch.setenv("DSE_EVALUATOR_TLS_CERT", str(cert))
     monkeypatch.setenv("DSE_EVALUATOR_TLS_KEY", str(key))
     monkeypatch.setenv("DSE_EVALUATOR_SUITE_ROOT", str(suite_root))
-    monkeypatch.setenv("DSE_EVALUATOR_BEARER_TOKEN", TOKEN)
+    monkeypatch.setenv("DSE_EVALUATOR_BEARER_AUTH_FIXTURE", AUTH_FIXTURE)
     monkeypatch.setenv(
         "DSE_EVALUATOR_WORKER_BUILD_SHA256",
         WORKER_BUILD,
@@ -343,4 +345,4 @@ def test_service_config_requires_operator_secrets_without_repr_leak(
 
     assert config.suite_root == suite_root.resolve()
     assert config.worker_build_sha256 == WORKER_BUILD
-    assert TOKEN not in repr(config)
+    assert AUTH_FIXTURE not in repr(config)
