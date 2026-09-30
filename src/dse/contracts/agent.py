@@ -97,7 +97,7 @@ class ActionIntentRecord(BaseModel):
     goal_id: str = Field(min_length=1)
     kind: str = Field(
         pattern=(
-            "^(inspect_workspace|draft_artifact|run_validation|"
+            "^(inspect_workspace|draft_artifact|run_validation|functional_submit|"
             "forge_create_repository|forge_inspect_repository|"
             "forge_publish_artifact|text_publish|social_send_message|"
             "social_open_issue|social_open_pr|social_post_message)$"
@@ -121,6 +121,7 @@ class ActionIntentRecord(BaseModel):
         text_publish = self.kind == "text_publish"
         content_kinds = {
             "draft_artifact",
+            "functional_submit",
             "forge_publish_artifact",
             "text_publish",
             "social_send_message",
@@ -239,6 +240,30 @@ class MemoryState(BaseModel):
     episodes: list[EpisodicMemory] = Field(default_factory=list)
 
 
+class FunctionalSubmissionRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    submission_id: str = Field(min_length=1, max_length=180)
+    action_id: str = Field(min_length=1)
+    created_tick: int = Field(ge=0)
+    agent_id: str = Field(min_length=1, max_length=120)
+    generation: int = Field(ge=0)
+    path: str = Field(min_length=1, max_length=160)
+    content: str = Field(min_length=1, max_length=16_384)
+    content_sha256: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern="^[0-9a-f]{64}$",
+    )
+    content_bytes: int = Field(ge=1, le=16_384)
+
+
+class FunctionalSubmissionState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current: FunctionalSubmissionRecord | None = None
+
+
 class AgentState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -252,6 +277,9 @@ class AgentState(BaseModel):
     cognition: CognitionState = Field(default_factory=CognitionState)
     goals: GoalState = Field(default_factory=GoalState)
     actions: ActionState = Field(default_factory=ActionState)
+    functional_submission: FunctionalSubmissionState = Field(
+        default_factory=FunctionalSubmissionState
+    )
     memory: MemoryState = Field(default_factory=MemoryState)
     last_active_tick: int = Field(default=0, ge=0)
     state_version: int = Field(default=0, ge=0)
