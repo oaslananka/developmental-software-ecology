@@ -205,9 +205,9 @@ class EvaluationConfig(StrictModel):
 def v0_1_hidden_evaluation_payload() -> dict[str, object]:
     return {
         "enabled": True,
-        "suite_id": "v0_1-hidden-functional-suite",
+        "suite_id": "v0_1-hidden-functional-suite-m20-v1",
         "suite_hash": (
-            "4791850327e4f4fead67e668c6a4d7e155048653b8cabf5fdede47c31b91f8a4"
+            "a869623be48e27c4fa39563596c703f1308f0b1a9a9a41c12fdf4a36c28146b1"
         ),
         "max_snapshot_artifacts": 512,
         "max_snapshot_bytes": 1_048_576,
