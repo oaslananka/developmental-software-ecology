@@ -33,6 +33,15 @@ class DeterministicFakeProvider:
         action_budget = int(
             request.context.get("action_proposals_remaining", 0) or 0
         )
+        functional_opportunity_enabled = bool(
+            request.context.get("functional_opportunity")
+        )
+        inspect_budget_floor = (
+            3 if functional_opportunity_enabled else 2
+        )
+        draft_budget = (
+            2 if functional_opportunity_enabled else 1
+        )
 
         if (
             request.response_schema
@@ -72,7 +81,7 @@ class DeterministicFakeProvider:
             and action_generation_enabled
             and active_goal is not None
             and float(active_goal.get("progress", 0.0)) == 0.0
-            and action_budget >= 3
+            and action_budget >= inspect_budget_floor
         ):
             decision = CognitionDecision(
                 decision="propose_action",
@@ -97,7 +106,7 @@ class DeterministicFakeProvider:
             and action_generation_enabled
             and active_goal is not None
             and float(active_goal.get("progress", 0.0)) == 0.0
-            and action_budget == 2
+            and action_budget == draft_budget
         ):
             decision = CognitionDecision(
                 decision="propose_action",
