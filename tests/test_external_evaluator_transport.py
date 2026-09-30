@@ -31,6 +31,7 @@ def _handshake_response(
     payload: dict,
     *,
     suite_hash: str | None = None,
+    opportunity_spec_hash: str | None = None,
     failed_check: str | None = None,
 ) -> dict:
     checks = [
@@ -46,11 +47,16 @@ def _handshake_response(
         for name in REQUIRED_SANDBOX_CHECKS
     ]
     return {
-        "protocol_version": "0.1",
+        "protocol_version": "0.2",
         "request_id": payload["request_id"],
         "service_id": "m17-fixture-service",
         "suite_id": payload["suite_id"],
         "suite_hash": suite_hash or payload["suite_hash"],
+        "opportunity_spec_id": payload["opportunity_spec_id"],
+        "opportunity_spec_hash": (
+            opportunity_spec_hash or payload["opportunity_spec_hash"]
+        ),
+        "opportunity_aggregation": payload["opportunity_aggregation"],
         "runner_kind": "external-hardened",
         "runner_version": "fixture-runner-1",
         "worker_build_sha256": "1" * 64,
@@ -192,6 +198,37 @@ def test_handshake_rejects_suite_hash_drift() -> None:
             json=_handshake_response(
                 payload,
                 suite_hash="b" * 64,
+            ),
+        )
+
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as http_client:
+            client = ExternalEvaluatorClient(
+                base_url="https://evaluator.example",
+                bearer_token=TOKEN,
+                client=http_client,
+            )
+            await client.open_session(manifest)
+
+    with pytest.raises(
+        ExternalEvaluatorProtocolError,
+        match="handshake binding mismatch",
+    ):
+        asyncio.run(scenario())
+
+
+def test_handshake_rejects_opportunity_spec_hash_drift() -> None:
+    manifest = load_manifest(E_MANIFEST)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json=_handshake_response(
+                payload,
+                opportunity_spec_hash="b" * 64,
             ),
         )
 
