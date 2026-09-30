@@ -372,7 +372,7 @@ def test_external_hardened_report_evidence_can_clear_runtime_gate() -> None:
     assert readiness.missing_surfaces == []
 
 
-def test_production_evaluator_package_contains_transport_not_execution_backend() -> None:
+def test_production_evaluator_package_has_only_approved_execution_backend() -> None:
     evaluator_files = sorted(
         path.name
         for path in Path("src/dse/evaluator").glob("*.py")
@@ -380,18 +380,22 @@ def test_production_evaluator_package_contains_transport_not_execution_backend()
     assert evaluator_files == [
         "__init__.py",
         "base.py",
+        "gvisor_docker.py",
         "http.py",
         "suite_store.py",
         "worker.py",
     ]
 
-    source_paths = [
+    control_plane_paths = [
         Path("src/dse/engine/hidden_evaluator.py"),
-        *Path("src/dse/evaluator").glob("*.py"),
+        Path("src/dse/evaluator/base.py"),
+        Path("src/dse/evaluator/http.py"),
+        Path("src/dse/evaluator/suite_store.py"),
+        Path("src/dse/evaluator/worker.py"),
     ]
-    source = "\n".join(
+    control_plane_source = "\n".join(
         path.read_text(encoding="utf-8").lower()
-        for path in source_paths
+        for path in control_plane_paths
     )
     forbidden = (
         "import subprocess",
@@ -401,7 +405,17 @@ def test_production_evaluator_package_contains_transport_not_execution_backend()
         "runsc",
         "firecracker",
     )
-    assert all(token not in source for token in forbidden)
+    assert all(
+        token not in control_plane_source
+        for token in forbidden
+    )
+
+    backend_source = Path(
+        "src/dse/evaluator/gvisor_docker.py"
+    ).read_text(encoding="utf-8").lower()
+    assert "import subprocess" in backend_source
+    assert '"--runtime=runsc"' in backend_source
+    assert '"--network=none"' in backend_source
 
 
 @pytest.fixture
