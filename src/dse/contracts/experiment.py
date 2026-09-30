@@ -252,7 +252,7 @@ class FunctionalOpportunityConfig(StrictModel):
         max_length=80,
         pattern=r"^[A-Za-z_][A-Za-z0-9_]*$",
     )
-    max_submission_bytes: int = Field(default=8192, ge=256, le=16_384)
+    max_submission_bytes: int = Field(default=4000, ge=256, le=16_384)
     public_brief: str = Field(default="", max_length=4096)
 
     @model_validator(mode="after")
@@ -331,7 +331,7 @@ def v0_1_functional_opportunity_payload() -> dict[str, object]:
         "aggregation": "population_any",
         "submission_path": "submission.py",
         "entrypoint": "solve",
-        "max_submission_bytes": 8192,
+        "max_submission_bytes": 4000,
         "public_brief": _V0_1_FUNCTIONAL_PUBLIC_SPEC,
     }
 
