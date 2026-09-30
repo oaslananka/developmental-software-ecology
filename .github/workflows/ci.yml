@@ -45,15 +45,17 @@ jobs:
       DSE_GVISOR_INTEGRATION: "1"
       DSE_SECRET_CANARY: "host-only-ci-canary"
       DSE_GVISOR_PROBE_IMAGE: "python:3.12-slim"
+      DSE_GVISOR_RUNTIME_IMAGE: "gcr.io/distroless/python3-debian13:nonroot"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
-      - name: Install probe test dependency
+      - name: Install locked CI dependencies
         run: >-
-          python -m pip install --only-binary=:all: pytest==8.4.2
+          python -m pip install --only-binary=:all: --require-hashes
+          --requirement requirements-ci.txt
       - name: Install gVisor runsc
         run: |
           sudo apt-get update
@@ -74,8 +76,12 @@ jobs:
           runsc --version
           sha256sum "$(command -v runsc)"
           docker info --format '{{json .Runtimes}}'
-      - name: Pull qualification image
-        run: docker pull "$DSE_GVISOR_PROBE_IMAGE"
+      - name: Pull qualification images
+        run: |
+          docker pull "$DSE_GVISOR_PROBE_IMAGE"
+          docker pull "$DSE_GVISOR_RUNTIME_IMAGE"
       - name: Run measured gVisor probes
-        run: pytest -q tests/test_gvisor_runtime_integration.py
-
+        run: >-
+          pytest -q
+          tests/test_gvisor_runtime_integration.py
+          tests/test_gvisor_docker_backend_integration.py
