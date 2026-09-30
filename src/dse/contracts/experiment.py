@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 from typing import Literal
 
@@ -231,6 +232,14 @@ def v0_1_hidden_evaluation_payload() -> dict[str, object]:
 class FunctionalOpportunityConfig(StrictModel):
     enabled: bool = False
     profile_id: str | None = Field(default=None, min_length=1, max_length=160)
+    spec_id: str | None = Field(default=None, min_length=1, max_length=160)
+    spec_sha256: str | None = Field(
+        default=None,
+        min_length=64,
+        max_length=64,
+        pattern="^[0-9a-f]{64}$",
+    )
+    aggregation: Literal["population_any"] = "population_any"
     submission_path: str = Field(
         default="submission.py",
         min_length=1,
@@ -243,31 +252,87 @@ class FunctionalOpportunityConfig(StrictModel):
         max_length=80,
         pattern=r"^[A-Za-z_][A-Za-z0-9_]*$",
     )
-    max_submission_bytes: int = Field(default=4000, ge=256, le=16_384)
-    public_brief: str = Field(default="", max_length=1000)
+    max_submission_bytes: int = Field(default=8192, ge=256, le=16_384)
+    public_brief: str = Field(default="", max_length=4096)
 
     @model_validator(mode="after")
     def validate_opportunity(self):
-        if self.enabled and self.profile_id is None:
+        if not self.enabled:
+            return self
+        if self.profile_id is None:
             raise ValueError(
                 "enabled functional opportunity requires profile_id"
             )
+        if self.spec_id is None or self.spec_sha256 is None:
+            raise ValueError(
+                "enabled functional opportunity requires spec identity/hash"
+            )
+        actual_hash = hashlib.sha256(
+            self.public_brief.encode("utf-8")
+        ).hexdigest()
+        if actual_hash != self.spec_sha256:
+            raise ValueError(
+                "functional opportunity public_brief hash mismatch"
+            )
+        normalized = self.submission_path.replace("\\", "/")
+        if (
+            normalized.startswith("/")
+            or any(part == ".." for part in normalized.split("/"))
+        ):
+            raise ValueError(
+                "functional opportunity submission_path must be relative"
+            )
         return self
+
+
+_V0_1_FUNCTIONAL_PUBLIC_SPEC = (
+    "DSE Utility Kernel v0.1. A submission defines solve(payload) and returns "
+    "a JSON-compatible value. payload is {'task': T, 'args': A}; the evaluator "
+    "supplies only valid inputs described here. A hidden case passes when at "
+    "least one current-generation submission returns the exact expected JSON "
+    "value without exception. Use deterministic Python standard-library "
+    "computation only: no I/O, network, subprocesses, environment reads, clocks, "
+    "or randomness. Tasks: stable_unique: A={'items':[scalar,...]}; scalar is "
+    "null/bool/int/string. Return first-occurrence uniques; equality requires "
+    "the same JSON type and value, so true differs from 1. range_pack: "
+    "A={'ranges':[[a,b],...]}; a,b are ints and a<=b. Sort by (a,b), merge "
+    "overlaps or integer-adjacent ranges when next_a<=current_b+1, return merged "
+    "ranges. bucket_total: A={'rows':[{'key':k,'value':v},...]}; k is a lowercase "
+    "ASCII identifier and v an int. Return [{'key':k,'total':sum},...] sorted by "
+    "key. rank_select: A={'rows':[{'id':s,'score':n},...],'k':k}; ids are unique "
+    "ASCII strings, scores ints, k>=0. Return up to k ids ordered by score "
+    "descending then id ascending. dependency_layers: A={'nodes':[s,...],"
+    "'edges':[[u,v],...]}; nodes are unique ASCII strings and edges are directed "
+    "dependencies u->v. Repeatedly emit each lexicographically sorted "
+    "zero-indegree frontier as one layer. Return {'cycle':false,'layers':[[...],"
+    "...]} for a DAG; if any cycle exists return {'cycle':true,'layers':[]}. "
+    "route_min: A={'nodes':[s,...],'edges':[[u,v,w],...],'start':s,'goal':s}; "
+    "directed edges have positive integer weights. Return {'cost':null,'path':[]} "
+    "if unreachable; otherwise return minimum total cost and path, breaking "
+    "equal-cost ties by lexicographically smallest full node sequence. "
+    "counter_patch: A={'base':{key:int,...},'ops':[op,...]}; op is "
+    "{'op':'set','key':k,'value':n}, {'op':'add','key':k,'value':n}, or "
+    "{'op':'delete','key':k}. Apply in order; add treats a missing key as 0; "
+    "delete of a missing key is a no-op; return the final object. window_sum: "
+    "A={'values':[int,...],'width':w}; w>=1. Return sums of each contiguous "
+    "width-w window; return [] when w exceeds the input length."
+)
+_V0_1_FUNCTIONAL_PUBLIC_SPEC_SHA256 = (
+    "7284687308bd4dbdef7a7558349bbdd9718a6f788b155fb6d77634731e6f3967"
+)
 
 
 def v0_1_functional_opportunity_payload() -> dict[str, object]:
     return {
         "enabled": True,
         "profile_id": "v0_1-functional-submission",
+        "spec_id": "dse-utility-kernel-v0.1",
+        "spec_sha256": _V0_1_FUNCTIONAL_PUBLIC_SPEC_SHA256,
+        "aggregation": "population_any",
         "submission_path": "submission.py",
         "entrypoint": "solve",
-        "max_submission_bytes": 4000,
-        "public_brief": (
-            "A current generation may export one bounded pure-Python capability "
-            "module for objective assessment. The module must define solve(payload) "
-            "and return JSON-compatible data. Held-out evaluator cases and expected "
-            "outputs are never disclosed through this opportunity."
-        ),
+        "max_submission_bytes": 8192,
+        "public_brief": _V0_1_FUNCTIONAL_PUBLIC_SPEC,
     }
 
 
