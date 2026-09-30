@@ -179,13 +179,24 @@ def test_gvisor_backend_produces_runtime_measured_evidence_and_evaluates() -> No
         suite_store=MemorySuiteStore(bundle),
         backend=backend,
     )
+    policy_hash = sandbox_policy_hash_for(policy)
+    measured_attestation = asyncio.run(
+        backend.attest(policy, policy_hash)
+    )
+    failed_checks = {
+        check.name: check.detail
+        for check in measured_attestation.checks
+        if not check.passed
+    }
+    assert failed_checks == {}
+
     handshake_request = ExternalEvaluatorHandshakeRequest(
         request_id="m18-2-handshake",
         experiment_id="m18-2-runtime-integration",
         suite_id=bundle.suite_id,
         suite_hash=bundle.suite_hash,
         policy=policy,
-        policy_hash=sandbox_policy_hash_for(policy),
+        policy_hash=policy_hash,
     )
 
     handshake = asyncio.run(

@@ -50,6 +50,12 @@ fractional core quota, while the experiment policy expresses a maximum CPU
 opportunity over a wall-time window. For example, a 2 CPU-second budget over a
 5 second wall limit maps to `--cpus=0.4`.
 
+For the V0.1 sub-core quota, attestation compares the same deterministic CPU
+workload at a 1.0-core control ceiling and at the policy-derived ceiling. It
+requires the limited container to show a material slowdown while Docker
+inspection reports the exact expected `NanoCpus` value. Quotas at or above one
+core currently fail closed until a multi-core A/B probe is implemented.
+
 ## Runtime-measured attestation
 
 `GVisorDockerBackend.attest` performs adversarial probes against the same
@@ -63,7 +69,7 @@ It measures:
 - Docker-socket absence;
 - no bind/volume mounts;
 - non-root/read-only/capability/security configuration;
-- CPU quota under concurrent busy-loop pressure;
+- CPU quota via an A/B fixed-workload slowdown probe;
 - memory-ceiling termination;
 - PID exhaustion;
 - tmpfs disk exhaustion;
