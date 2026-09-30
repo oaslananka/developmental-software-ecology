@@ -892,7 +892,7 @@ def _functional_submission_decision(
         decision="propose_action",
         reason_summary=(
             "Export the current generation's bounded executable capability "
-            "through the treatment-independent assessment channel."
+            "through the treatment-independent environmental channel."
         ),
         confidence=0.9,
         focus="functional-capability",
@@ -901,8 +901,8 @@ def _functional_submission_decision(
             summary="Submit current generation functional capability.",
             target=target,
             rationale=(
-                "Every condition receives the same non-inherited submission "
-                "channel for objective held-out evaluation."
+                "Every condition receives the same non-inherited capability "
+                "export channel for the public environmental opportunity."
             ),
             expected_value=0.95,
             estimated_cost=0.2,
