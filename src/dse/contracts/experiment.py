@@ -228,6 +228,49 @@ def v0_1_hidden_evaluation_payload() -> dict[str, object]:
     }
 
 
+class FunctionalOpportunityConfig(StrictModel):
+    enabled: bool = False
+    profile_id: str | None = Field(default=None, min_length=1, max_length=160)
+    submission_path: str = Field(
+        default="submission.py",
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9._/-]+$",
+    )
+    entrypoint: str = Field(
+        default="solve",
+        min_length=1,
+        max_length=80,
+        pattern=r"^[A-Za-z_][A-Za-z0-9_]*$",
+    )
+    max_submission_bytes: int = Field(default=4000, ge=256, le=16_384)
+    public_brief: str = Field(default="", max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_opportunity(self):
+        if self.enabled and self.profile_id is None:
+            raise ValueError(
+                "enabled functional opportunity requires profile_id"
+            )
+        return self
+
+
+def v0_1_functional_opportunity_payload() -> dict[str, object]:
+    return {
+        "enabled": True,
+        "profile_id": "v0_1-functional-submission",
+        "submission_path": "submission.py",
+        "entrypoint": "solve",
+        "max_submission_bytes": 4000,
+        "public_brief": (
+            "A current generation may export one bounded pure-Python capability "
+            "module for objective assessment. The module must define solve(payload) "
+            "and return JSON-compatible data. Held-out evaluator cases and expected "
+            "outputs are never disclosed through this opportunity."
+        ),
+    }
+
+
 class MemoryConfig(StrictModel):
     enabled: bool = False
     capacity: int = Field(default=32, ge=1)
@@ -282,40 +325,69 @@ class ExperimentManifest(StrictModel):
         "none",
         "v0_1-hidden-functional-suite",
     ] = "none"
+    functional_opportunity_profile: Literal[
+        "none",
+        "v0_1-functional-submission",
+    ] = "none"
     study: StudyDesignConfig = Field(default_factory=StudyDesignConfig)
     experiment: ExperimentIdentity
     world: WorldConfig
     agents: AgentConfig
     runtime: RuntimeConfig
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
+    functional_opportunity: FunctionalOpportunityConfig = Field(
+        default_factory=FunctionalOpportunityConfig
+    )
 
     @model_validator(mode="before")
     @classmethod
-    def resolve_evaluation_profile(cls, value):
+    def resolve_profiles(cls, value):
         if not isinstance(value, dict):
             return value
 
         profile = value.get("evaluation_profile", "none")
-        if profile == "none":
+        if profile == "v0_1-hidden-functional-suite":
+            expected = EvaluationConfig.model_validate(
+                v0_1_hidden_evaluation_payload()
+            ).model_dump(mode="json")
+            if "evaluation" in value:
+                observed = EvaluationConfig.model_validate(
+                    value["evaluation"]
+                ).model_dump(mode="json")
+                if observed != expected:
+                    raise ValueError(
+                        "evaluation does not match evaluation_profile"
+                    )
+            else:
+                resolved = dict(value)
+                resolved["evaluation"] = expected
+                value = resolved
+
+        opportunity_profile = value.get(
+            "functional_opportunity_profile",
+            "none",
+        )
+        if opportunity_profile == "none":
             return value
-        if profile != "v0_1-hidden-functional-suite":
+        if opportunity_profile != "v0_1-functional-submission":
             return value
 
-        expected = EvaluationConfig.model_validate(
-            v0_1_hidden_evaluation_payload()
+        expected_opportunity = FunctionalOpportunityConfig.model_validate(
+            v0_1_functional_opportunity_payload()
         ).model_dump(mode="json")
-        if "evaluation" in value:
-            observed = EvaluationConfig.model_validate(
-                value["evaluation"]
+        if "functional_opportunity" in value:
+            observed_opportunity = FunctionalOpportunityConfig.model_validate(
+                value["functional_opportunity"]
             ).model_dump(mode="json")
-            if observed != expected:
+            if observed_opportunity != expected_opportunity:
                 raise ValueError(
-                    "evaluation does not match evaluation_profile"
+                    "functional_opportunity does not match "
+                    "functional_opportunity_profile"
                 )
             return value
 
         resolved = dict(value)
-        resolved["evaluation"] = expected
+        resolved["functional_opportunity"] = expected_opportunity
         return resolved
 
     @model_validator(mode="after")
