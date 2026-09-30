@@ -42,6 +42,16 @@ def _check(
         raise AssertionError(message)
 
 
+class CapturingFakeProvider(DeterministicFakeProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.requests = []
+
+    async def generate(self, request):
+        self.requests.append(request)
+        return await super().generate(request)
+
+
 def _manifests() -> dict[str, ExperimentManifest]:
     return {
         condition: load_manifest(path)
@@ -119,7 +129,7 @@ def test_all_primary_condition_manifests_share_compute_budget() -> None:
         _check(opportunity.spec_id == "dse-utility-kernel-v0.1")
         _check(
             opportunity.spec_sha256
-            == "7284687308bd4dbdef7a7558349bbdd9718a6f788b155fb6d77634731e6f3967"
+            == "8c5dbb384df0bb73e2b8db6dd9b8a97cf31ef904ecca8a5bf4411f5e8e696439"
         )
         _check(opportunity.aggregation == "population_any")
         _check(
@@ -139,6 +149,38 @@ def test_all_primary_condition_manifests_share_compute_budget() -> None:
             "window_sum",
         ):
             _check(task in opportunity.public_brief)
+
+
+def test_agent_context_exposes_opportunity_without_evaluator_metadata() -> None:
+    manifest = load_manifest(CONDITION_PATHS["P"])
+    world = create_world(manifest)
+    provider = CapturingFakeProvider()
+
+    asyncio.run(
+        advance_structured_cognition_ticks(
+            world,
+            manifest,
+            provider,
+            20,
+        )
+    )
+
+    _check(len(provider.requests) == 5)
+    expected_keys = {
+        "profile_id",
+        "spec_id",
+        "submission_path",
+        "entrypoint",
+        "max_submission_bytes",
+        "public_brief",
+    }
+    for request in provider.requests:
+        opportunity = request.context["functional_opportunity"]
+        _check(set(opportunity) == expected_keys)
+        brief = str(opportunity["public_brief"]).lower()
+        _check("hidden evaluator" not in brief)
+        _check("assessment" not in brief)
+        _check("population_any" not in brief)
 
 
 def test_condition_contract_rejects_treatment_drift() -> None:
