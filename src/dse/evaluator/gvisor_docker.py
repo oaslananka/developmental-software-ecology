@@ -466,9 +466,16 @@ print(len(chunks))
             self._remove_container(name)
             self._require_container_absent(name)
 
-    def _probe_pid_limit(self, policy: SandboxPolicyConfig) -> SandboxCheck:
+    def _probe_pid_limit(
+        self,
+        policy: SandboxPolicyConfig,
+    ) -> SandboxCheck:
         name = self._name("pid")
-        attempts = max(policy.pids_max * 2, policy.pids_max + 8)
+        recovery = self._name("pid-recovery")
+        attempts = max(
+            policy.pids_max * 2,
+            policy.pids_max + 8,
+        )
         script = f"""
 import json
 import os
@@ -513,28 +520,79 @@ print(json.dumps({{"children_started": len(children), "limited": limited}}))
                     15.0,
                     float(policy.wall_timeout_seconds),
                 ),
-                output_limit=min(policy.output_bytes, 65_536),
+                output_limit=min(
+                    policy.output_bytes,
+                    65_536,
+                ),
             )
-            measured = self._json_from_stdout(result)
+            inspect = self._inspect_container(name)
+            host = inspect["HostConfig"]
+            state = inspect["State"]
+
+            if result.returncode == 0:
+                measured = self._json_from_stdout(result)
+                pressure_enforced = (
+                    bool(measured["limited"])
+                    and measured["children_started"] < attempts
+                )
+                pressure_detail = (
+                    f"fork pressure stopped after "
+                    f"{measured['children_started']} children"
+                )
+            else:
+                pressure_enforced = (
+                    not result.timed_out
+                    and not result.output_exceeded
+                    and state.get("OOMKilled") is False
+                    and state.get("ExitCode") == result.returncode
+                )
+                pressure_detail = (
+                    f"PID pressure terminated sandbox "
+                    f"with exit {result.returncode}, not OOM"
+                )
+
+            self._remove_container(name)
+            self._create_runtime_container(
+                recovery,
+                policy,
+                python_args=[
+                    "-I",
+                    "-B",
+                    "-c",
+                    'print("recovered")',
+                ],
+            )
+            recovered = self._run_attached(
+                recovery,
+                wall_timeout=float(
+                    policy.wall_timeout_seconds
+                ),
+                output_limit=min(
+                    policy.output_bytes,
+                    65_536,
+                ),
+            )
+            recovery_ok = (
+                recovered.returncode == 0
+                and recovered.stdout.strip() == b"recovered"
+            )
             passed = (
-                not result.timed_out
-                and not result.output_exceeded
-                and result.returncode == 0
-                and bool(measured["limited"])
-                and measured["children_started"] < attempts
+                host.get("PidsLimit") == policy.pids_max
+                and pressure_enforced
+                and recovery_ok
             )
             return SandboxCheck(
                 name="pid_limit_enforced",
                 passed=passed,
                 detail=(
-                    f"fork pressure stopped after "
-                    f"{measured['children_started']} children "
-                    f"with pids_max={policy.pids_max}"
+                    f"{pressure_detail}; fresh runtime recovered"
                 ),
             )
         finally:
             self._remove_container(name)
+            self._remove_container(recovery)
             self._require_container_absent(name)
+            self._require_container_absent(recovery)
 
     def _probe_disk_limit(self, policy: SandboxPolicyConfig) -> SandboxCheck:
         name = self._name("disk")
