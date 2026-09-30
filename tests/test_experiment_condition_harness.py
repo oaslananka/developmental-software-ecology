@@ -110,10 +110,10 @@ def test_all_primary_condition_manifests_share_compute_budget() -> None:
         assert manifest.runtime.text_culture.operations_per_cycle == 4
         assert manifest.runtime.social.operations_per_cycle == 4
         assert manifest.evaluation.enabled is True
-        assert manifest.evaluation.suite_id == "v0_1-hidden-functional-suite"
+        assert manifest.evaluation.suite_id == "v0_1-hidden-functional-suite-m20-v1"
         assert (
             manifest.evaluation.suite_hash
-            == "4791850327e4f4fead67e668c6a4d7e155048653b8cabf5fdede47c31b91f8a4"
+            == "a869623be48e27c4fa39563596c703f1308f0b1a9a9a41c12fdf4a36c28146b1"
         )
         assert manifest.evaluation.sandbox_enabled is True
         assert manifest.evaluation.sandbox_policy.backend == "external-hardened"
