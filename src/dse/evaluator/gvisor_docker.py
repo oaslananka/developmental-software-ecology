@@ -1197,12 +1197,16 @@ time.sleep({policy.wall_timeout_seconds + 5})
         return value
 
     def _container_exists(self, name: str) -> bool:
-        result = subprocess.run(
-            [self.docker_binary, "inspect", name],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            result = subprocess.run(
+                [self.docker_binary, "inspect", name],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5.0,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return True
         return result.returncode == 0
 
     def _require_container_absent(
@@ -1215,26 +1219,34 @@ time.sleep({policy.wall_timeout_seconds + 5})
             )
 
     def _remove_container(self, name: str) -> None:
-        subprocess.run(
-            [self.docker_binary, "rm", "-f", name],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            subprocess.run(
+                [self.docker_binary, "rm", "-f", name],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5.0,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return
 
     def _remove_image(self, image: str) -> None:
-        subprocess.run(
-            [
-                self.docker_binary,
-                "image",
-                "rm",
-                "-f",
-                image,
-            ],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            subprocess.run(
+                [
+                    self.docker_binary,
+                    "image",
+                    "rm",
+                    "-f",
+                    image,
+                ],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5.0,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return
 
     def _run_checked(
         self,
