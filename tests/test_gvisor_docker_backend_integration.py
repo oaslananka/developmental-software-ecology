@@ -77,6 +77,9 @@ def _bundle() -> HiddenSuiteBundle:
     return HiddenSuiteBundle(
         suite_id=SUITE_ID,
         suite_hash=hashlib.sha256(SUITE_SOURCE).hexdigest(),
+        opportunity_spec_id=OPPORTUNITY_SPEC_ID,
+        opportunity_spec_hash=OPPORTUNITY_SPEC_HASH,
+        opportunity_aggregation=OPPORTUNITY_AGGREGATION,
         total_cases=1,
         payload=SUITE_SOURCE,
     )
@@ -204,6 +207,9 @@ def test_gvisor_backend_produces_runtime_measured_evidence_and_evaluates() -> No
         experiment_id="m18-2-runtime-integration",
         suite_id=bundle.suite_id,
         suite_hash=bundle.suite_hash,
+        opportunity_spec_id=bundle.opportunity_spec_id,
+        opportunity_spec_hash=bundle.opportunity_spec_hash,
+        opportunity_aggregation=bundle.opportunity_aggregation,
         policy=policy,
         policy_hash=policy_hash,
     )
