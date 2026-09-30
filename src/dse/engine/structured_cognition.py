@@ -246,7 +246,6 @@ async def advance_structured_cognition_tick(
                     agent_id=agent_id,
                     cognition_event=cognition_event,
                     decision=response.decision,
-                    manifest=manifest,
                 )
             )
 
@@ -257,6 +256,7 @@ async def advance_structured_cognition_tick(
                     agent_id=agent_id,
                     cognition_event=cognition_event,
                     decision=response.decision,
+                    manifest=manifest,
                 )
             )
 
