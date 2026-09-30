@@ -239,6 +239,108 @@ class _ParsedRequestHead:
     content_length: int | None
 
 
+def _protocol_error(
+    status: HTTPStatus,
+    error: str,
+) -> EvaluatorServiceResponse:
+    return EvaluatorServiceResponse.json(
+        status,
+        {"error": error},
+    )
+
+
+def _parse_request_line(
+    line: str,
+) -> tuple[str, str] | EvaluatorServiceResponse:
+    parts = line.split(" ")
+    if len(parts) != 3:
+        return _protocol_error(
+            HTTPStatus.BAD_REQUEST,
+            "invalid_request_line",
+        )
+    method, path, version = parts
+    if (
+        not method
+        or not path.startswith("/")
+        or version != "HTTP/1.1"
+    ):
+        return _protocol_error(
+            HTTPStatus.BAD_REQUEST,
+            "invalid_request_line",
+        )
+    return method, path
+
+
+def _parse_headers(
+    lines: list[str],
+) -> dict[str, str] | EvaluatorServiceResponse:
+    headers: dict[str, str] = {}
+    for line in lines:
+        if (
+            not line
+            or line[0] in " \t"
+            or ":" not in line
+        ):
+            return _protocol_error(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_headers",
+            )
+
+        name, value = line.split(":", maxsplit=1)
+        if not _HEADER_NAME.fullmatch(name):
+            return _protocol_error(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_headers",
+            )
+
+        normalized_name = name.lower()
+        if normalized_name in headers:
+            return _protocol_error(
+                HTTPStatus.BAD_REQUEST,
+                "duplicate_header",
+            )
+
+        if any(
+            ord(character) < 32
+            and character != "\t"
+            for character in value
+        ):
+            return _protocol_error(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_headers",
+            )
+        headers[normalized_name] = value.strip()
+    return headers
+
+
+def _parse_content_length(
+    headers: Mapping[str, str],
+    *,
+    max_request_bytes: int,
+) -> int | None | EvaluatorServiceResponse:
+    raw = headers.get("content-length")
+    if raw is None:
+        return None
+    try:
+        value = int(raw, 10)
+    except ValueError:
+        return _protocol_error(
+            HTTPStatus.BAD_REQUEST,
+            "invalid_content_length",
+        )
+    if value < 0:
+        return _protocol_error(
+            HTTPStatus.BAD_REQUEST,
+            "invalid_content_length",
+        )
+    if value > max_request_bytes:
+        return _protocol_error(
+            HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+            "request_too_large",
+        )
+    return value
+
+
 class EvaluatorTLSServer:
     """Small fail-closed TLS/HTTP boundary for the evaluator protocol."""
 
@@ -462,7 +564,7 @@ class EvaluatorTLSServer:
                         {"error": "evaluator_unavailable"},
                     ),
                 )
-            except (ConnectionError, OSError):
+            except OSError:
                 return
         finally:
             writer.close()
@@ -477,121 +579,64 @@ class EvaluatorTLSServer:
                 timeout=self.request_timeout_seconds,
             )
         except TimeoutError:
-            return EvaluatorServiceResponse.json(
+            return _protocol_error(
                 HTTPStatus.REQUEST_TIMEOUT,
-                {"error": "request_timeout"},
+                "request_timeout",
             )
         except asyncio.LimitOverrunError:
-            return EvaluatorServiceResponse.json(
+            return _protocol_error(
                 HTTPStatus.REQUEST_HEADER_FIELDS_TOO_LARGE,
-                {"error": "headers_too_large"},
+                "headers_too_large",
             )
         except asyncio.IncompleteReadError:
-            return EvaluatorServiceResponse.json(
+            return _protocol_error(
                 HTTPStatus.BAD_REQUEST,
-                {"error": "incomplete_headers"},
+                "incomplete_headers",
             )
 
         if len(raw) > self.max_header_bytes:
-            return EvaluatorServiceResponse.json(
+            return _protocol_error(
                 HTTPStatus.REQUEST_HEADER_FIELDS_TOO_LARGE,
-                {"error": "headers_too_large"},
+                "headers_too_large",
             )
 
         try:
             text = raw.decode("ascii")
         except UnicodeDecodeError:
-            return EvaluatorServiceResponse.json(
+            return _protocol_error(
                 HTTPStatus.BAD_REQUEST,
-                {"error": "invalid_headers"},
+                "invalid_headers",
             )
 
         lines = text[:-4].split("\r\n")
-        if not lines:
-            return EvaluatorServiceResponse.json(
-                HTTPStatus.BAD_REQUEST,
-                {"error": "invalid_request_line"},
-            )
-
-        request_parts = lines[0].split(" ")
-        if len(request_parts) != 3:
-            return EvaluatorServiceResponse.json(
-                HTTPStatus.BAD_REQUEST,
-                {"error": "invalid_request_line"},
-            )
-        method, path, version = request_parts
-        if (
-            not method
-            or not path.startswith("/")
-            or version != "HTTP/1.1"
-        ):
-            return EvaluatorServiceResponse.json(
-                HTTPStatus.BAD_REQUEST,
-                {"error": "invalid_request_line"},
-            )
-
-        headers: dict[str, str] = {}
-        for line in lines[1:]:
-            if (
-                not line
-                or line[0] in " \t"
-                or ":" not in line
-            ):
-                return EvaluatorServiceResponse.json(
-                    HTTPStatus.BAD_REQUEST,
-                    {"error": "invalid_headers"},
-                )
-            name, value = line.split(":", maxsplit=1)
-            if not _HEADER_NAME.fullmatch(name):
-                return EvaluatorServiceResponse.json(
-                    HTTPStatus.BAD_REQUEST,
-                    {"error": "invalid_headers"},
-                )
-            normalized_name = name.lower()
-            if normalized_name in headers:
-                return EvaluatorServiceResponse.json(
-                    HTTPStatus.BAD_REQUEST,
-                    {"error": "duplicate_header"},
-                )
-            if any(
-                ord(character) < 32
-                and character != "\t"
-                for character in value
-            ):
-                return EvaluatorServiceResponse.json(
-                    HTTPStatus.BAD_REQUEST,
-                    {"error": "invalid_headers"},
-                )
-            headers[normalized_name] = value.strip()
-
-        content_length: int | None = None
-        length_value = headers.get(
-            "content-length"
+        request_line = _parse_request_line(
+            lines[0] if lines else ""
         )
-        if length_value is not None:
-            try:
-                content_length = int(
-                    length_value,
-                    10,
-                )
-            except ValueError:
-                return EvaluatorServiceResponse.json(
-                    HTTPStatus.BAD_REQUEST,
-                    {"error": "invalid_content_length"},
-                )
-            if content_length < 0:
-                return EvaluatorServiceResponse.json(
-                    HTTPStatus.BAD_REQUEST,
-                    {"error": "invalid_content_length"},
-                )
-            if (
-                content_length
-                > self.application.max_request_bytes
-            ):
-                return EvaluatorServiceResponse.json(
-                    HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                    {"error": "request_too_large"},
-                )
+        if isinstance(
+            request_line,
+            EvaluatorServiceResponse,
+        ):
+            return request_line
+        method, path = request_line
+
+        headers = _parse_headers(lines[1:])
+        if isinstance(
+            headers,
+            EvaluatorServiceResponse,
+        ):
+            return headers
+
+        content_length = _parse_content_length(
+            headers,
+            max_request_bytes=(
+                self.application.max_request_bytes
+            ),
+        )
+        if isinstance(
+            content_length,
+            EvaluatorServiceResponse,
+        ):
+            return content_length
 
         return _ParsedRequestHead(
             method=method,
