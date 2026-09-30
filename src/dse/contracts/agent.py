@@ -243,7 +243,7 @@ class MemoryState(BaseModel):
 class FunctionalSubmissionRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    submission_id: str = Field(min_length=1, max_length=180)
+    submission_id: str = Field(min_length=1, max_length=96)
     action_id: str = Field(min_length=1)
     created_tick: int = Field(ge=0)
     agent_id: str = Field(min_length=1, max_length=120)
