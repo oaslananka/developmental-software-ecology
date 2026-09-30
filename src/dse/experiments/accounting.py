@@ -46,6 +46,9 @@ class ComputeBudgetFingerprint(StrictModel):
     model_timeout_seconds: float
     sandbox_enabled: bool
     web_enabled: bool
+    functional_opportunity_profile: str
+    functional_submission_path: str
+    functional_submission_max_bytes: int
 
 
 class ComputeUsage(StrictModel):
@@ -122,6 +125,15 @@ def compute_budget_fingerprint(
         model_timeout_seconds=manifest.runtime.model_provider.timeout_seconds,
         sandbox_enabled=manifest.runtime.sandbox_enabled,
         web_enabled=manifest.runtime.web_enabled,
+        functional_opportunity_profile=(
+            manifest.functional_opportunity_profile
+        ),
+        functional_submission_path=(
+            manifest.functional_opportunity.submission_path
+        ),
+        functional_submission_max_bytes=(
+            manifest.functional_opportunity.max_submission_bytes
+        ),
     )
 
 
