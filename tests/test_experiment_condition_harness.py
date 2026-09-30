@@ -93,7 +93,7 @@ def test_all_primary_condition_manifests_share_compute_budget() -> None:
         assert manifest.agents.turnover.ticks == [150]
         assert manifest.agents.cognition.model_calls_per_cycle == 7
         assert manifest.agents.cognition.interval_ticks == 20
-        assert manifest.agents.actions.proposals_per_cycle == 5
+        _check(manifest.agents.actions.proposals_per_cycle == 5)
         assert manifest.agents.memory.capacity == 32
         assert manifest.runtime.forge.operations_per_cycle == 4
         assert manifest.runtime.text_culture.operations_per_cycle == 4
@@ -342,7 +342,7 @@ def test_p_and_ril_observed_compute_match_under_equal_budget() -> None:
     assert usages["RIL"].model_calls == 70
     assert usages["P"].total_tokens == 3080
     assert usages["RIL"].total_tokens == 3080
-    assert usages["P"].action_proposals == 50
+    _check(usages["P"].action_proposals == 50)
     assert usages["RIL"].action_proposals == 50
     assert usages["P"].forge_operations == 0
     assert usages["RIL"].forge_operations == 0
