@@ -66,6 +66,7 @@ class ComputeUsage(StrictModel):
     text_entries_published: int = Field(ge=0)
     social_messages_created: int = Field(ge=0)
     social_threads_created: int = Field(ge=0)
+    functional_submissions: int = Field(ge=0)
     turnovers: int = Field(ge=0)
     repositories_created: int = Field(ge=0)
     artifacts_committed: int = Field(ge=0)
@@ -215,6 +216,7 @@ def compute_usage(events: Iterable[WorldEvent]) -> ComputeUsage:
             + counts["social.thread.message_posted"]
         ),
         social_threads_created=counts["social.thread.opened"],
+        functional_submissions=counts["functional.submission.published"],
         turnovers=counts["agent.lifecycle.turned_over"],
         repositories_created=counts["forge.repository.created"],
         artifacts_committed=counts["forge.artifact.committed"],
