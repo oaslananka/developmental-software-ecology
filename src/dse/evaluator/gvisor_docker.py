@@ -308,6 +308,7 @@ print(json.dumps({{
                 and host.get("MemorySwap") == expected_memory
                 and host.get("NanoCpus") == expected_nano_cpus
                 and inspect["Config"].get("User") == "65532:65532"
+                and measured["uid"] == 65532
                 and not any(
                     mount.get("Type") in {"bind", "volume"}
                     for mount in mounts
