@@ -33,6 +33,14 @@ CONDITION_PATHS = {
 M13_MANIFEST = Path("experiments/v0_1/controlled-turnover-fake.yaml")
 
 
+def _check(
+    condition: bool,
+    message: str = "test condition failed",
+) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
 def _manifests() -> dict[str, ExperimentManifest]:
     return {
         condition: load_manifest(path)
@@ -98,13 +106,13 @@ def test_all_primary_condition_manifests_share_compute_budget() -> None:
         )
         assert manifest.evaluation.sandbox_enabled is True
         assert manifest.evaluation.sandbox_policy.backend == "external-hardened"
-        assert (
+        _check(
             manifest.functional_opportunity_profile
             == "v0_1-functional-submission"
         )
-        assert manifest.functional_opportunity.enabled is True
-        assert manifest.functional_opportunity.submission_path == "submission.py"
-        assert manifest.functional_opportunity.entrypoint == "solve"
+        _check(manifest.functional_opportunity.enabled is True)
+        _check(manifest.functional_opportunity.submission_path == "submission.py")
+        _check(manifest.functional_opportunity.entrypoint == "solve")
 
 
 def test_condition_contract_rejects_treatment_drift() -> None:
@@ -151,7 +159,7 @@ def test_evaluation_profile_roundtrips_canonical_manifest() -> None:
 
     assert restored == manifest
     assert restored.evaluation_profile == "v0_1-hidden-functional-suite"
-    assert (
+    _check(
         restored.functional_opportunity_profile
         == "v0_1-functional-submission"
     )
@@ -208,24 +216,27 @@ def test_support_gate_reports_missing_runtime_surfaces_without_theater() -> None
         for condition, manifest in manifests.items()
     }
 
-    assert reports["P"].research_runtime_ready is False
-    assert reports["P"].missing_surfaces == [
-        "attested_hardened_evaluator_runtime",
-    ]
+    _check(reports["P"].research_runtime_ready is False)
+    _check(
+        reports["P"].missing_surfaces
+        == ["attested_hardened_evaluator_runtime"]
+    )
     assert any(
         "limited communication" in note
         for note in reports["P"].notes
     )
 
-    assert reports["RIL"].research_runtime_ready is False
-    assert reports["RIL"].missing_surfaces == [
-        "attested_hardened_evaluator_runtime",
-    ]
+    _check(reports["RIL"].research_runtime_ready is False)
+    _check(
+        reports["RIL"].missing_surfaces
+        == ["attested_hardened_evaluator_runtime"]
+    )
 
-    assert reports["T"].research_runtime_ready is False
-    assert reports["T"].missing_surfaces == [
-        "attested_hardened_evaluator_runtime",
-    ]
+    _check(reports["T"].research_runtime_ready is False)
+    _check(
+        reports["T"].missing_surfaces
+        == ["attested_hardened_evaluator_runtime"]
+    )
 
     assert reports["E"].research_runtime_ready is False
     assert reports["E"].missing_surfaces == [
@@ -250,11 +261,11 @@ def test_harness_reports_full_matrix_but_does_not_claim_false_readiness() -> Non
         item.condition: item
         for item in report.support
     }
-    assert support["P"].research_runtime_ready is False
-    assert support["RIL"].research_runtime_ready is False
+    _check(support["P"].research_runtime_ready is False)
+    _check(support["RIL"].research_runtime_ready is False)
     assert support["E"].research_runtime_ready is False
     assert support["ES"].research_runtime_ready is False
-    assert support["T"].research_runtime_ready is False
+    _check(support["T"].research_runtime_ready is False)
 
 
 def test_compute_budget_drift_is_rejected_even_if_treatment_is_valid() -> None:
