@@ -215,6 +215,9 @@ class HardenedEvaluatorWorker:
             "world_sequence",
             "world_snapshot_hash",
             "culture_snapshot_hash",
+            "opportunity_spec_id",
+            "opportunity_spec_hash",
+            "opportunity_aggregation",
         )
         for field in identity_fields:
             if getattr(request.plan, field) != getattr(request.snapshot, field):
