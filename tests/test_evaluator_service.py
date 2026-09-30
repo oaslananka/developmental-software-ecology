@@ -270,7 +270,7 @@ def test_worker_rejection_is_sanitized() -> None:
                 "suite_id": "missing-suite",
                 "suite_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "opportunity_spec_id": "dse-utility-kernel-v0.1",
-                "opportunity_spec_hash": "7284687308bd4dbdef7a7558349bbdd9718a6f788b155fb6d77634731e6f3967",
+                "opportunity_spec_hash": "8c5dbb384df0bb73e2b8db6dd9b8a97cf31ef904ecca8a5bf4411f5e8e696439",
                 "opportunity_aggregation": "population_any",
                 "policy": {
                     "backend": "external-hardened",
