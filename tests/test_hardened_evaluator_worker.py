@@ -385,7 +385,7 @@ def test_worker_rejects_opportunity_spec_drift() -> None:
 
     with pytest.raises(
         EvaluatorWorkerError,
-        match="plan/snapshot mismatch: opportunity_spec_hash",
+        match="hidden suite opportunity binding mismatch: opportunity_spec_hash",
     ):
         asyncio.run(worker.evaluate(tampered))
 
