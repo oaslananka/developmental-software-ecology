@@ -59,7 +59,7 @@ class RecordingBackend:
     runtime_build_sha256 = RUNTIME_BUILD
 
     async def attest(self, policy, policy_hash: str) -> SandboxAttestation:
-        assert policy_hash == sandbox_policy_hash_for(policy)
+        _check(policy_hash == sandbox_policy_hash_for(policy))
         return SandboxAttestation(
             attestation_id="m18-3-runtime-attestation",
             evidence_kind="runtime-measured",
@@ -81,7 +81,7 @@ class RecordingBackend:
         request,
         suite: HiddenSuiteBundle,
     ) -> WorkerEvaluationAggregate:
-        assert request.plan.suite_hash == suite.suite_hash
+        _check(request.plan.suite_hash == suite.suite_hash)
         return WorkerEvaluationAggregate(
             passed_cases=1,
             failed_cases=0,
@@ -170,9 +170,9 @@ def test_service_rejects_unauthorized_requests_without_echoing_body() -> None:
         )
     )
 
-    assert response.status == 401
-    assert secret_marker not in response.body
-    assert b"unauthorized" in response.body
+    _check(response.status == 401)
+    _check(secret_marker not in response.body)
+    _check(b"unauthorized" in response.body)
 
 
 def test_service_rejects_unbounded_or_invalid_transport_shapes() -> None:
@@ -242,7 +242,7 @@ def test_service_rejects_unbounded_or_invalid_transport_shapes() -> None:
                 body=body,
             )
         )
-        assert response.status == expected
+        _check(response.status == expected)
 
 
 def test_worker_rejection_is_sanitized() -> None:
@@ -280,10 +280,10 @@ def test_worker_rejection_is_sanitized() -> None:
         )
     )
 
-    assert response.status == 422
-    assert b"evaluation_rejected" in response.body
-    assert b"private suite path detail" not in response.body
-    assert b"missing-suite" not in response.body
+    _check(response.status == 422)
+    _check(b"evaluation_rejected" in response.body)
+    _check(b"private suite path detail" not in response.body)
+    _check(b"missing-suite" not in response.body)
 
 
 def test_external_client_round_trips_through_service_application() -> None:
@@ -302,7 +302,7 @@ def test_external_client_round_trips_through_service_application() -> None:
                 client=http_client,
             )
             session = await client.open_session(manifest)
-            assert session.attestation.evidence_kind == "runtime-measured"
+            _check(session.attestation.evidence_kind == "runtime-measured")
 
             world = create_world(manifest)
             before_hash = world_state_hash(world)
@@ -313,20 +313,20 @@ def test_external_client_round_trips_through_service_application() -> None:
                 runner=session,
             )
 
-            assert outcome.completed is True
-            assert outcome.report is not None
-            assert outcome.report.passed_cases == 1
-            assert outcome.report.total_cases == 1
-            assert outcome.report.worker_build_sha256 == WORKER_BUILD
-            assert outcome.report.runtime_build_sha256 == RUNTIME_BUILD
-            assert world_state_hash(world) == before_hash
+            _check(outcome.completed is True)
+            _check(outcome.report is not None)
+            _check(outcome.report.passed_cases == 1)
+            _check(outcome.report.total_cases == 1)
+            _check(outcome.report.worker_build_sha256 == WORKER_BUILD)
+            _check(outcome.report.runtime_build_sha256 == RUNTIME_BUILD)
+            _check(world_state_hash(world) == before_hash)
 
             readiness = assess_condition_runtime_readiness(
                 manifest,
                 outcome.report,
             )
-            assert readiness.research_runtime_ready is True
-            assert readiness.missing_surfaces == []
+            _check(readiness.research_runtime_ready is True)
+            _check(readiness.missing_surfaces == [])
 
     asyncio.run(exercise())
 
@@ -375,10 +375,10 @@ def test_tls_parser_accepts_one_strict_http11_request() -> None:
 
     parsed = asyncio.run(parse())
 
-    assert parsed.method == "POST"
-    assert parsed.path == "/v1/handshake"
-    assert parsed.content_length == 2
-    assert parsed.headers["host"] == "evaluator.example"
+    _check(parsed.method == "POST")
+    _check(parsed.path == "/v1/handshake")
+    _check(parsed.content_length == 2)
+    _check(parsed.headers["host"] == "evaluator.example")
 
 
 def test_tls_parser_rejects_duplicate_headers() -> None:
@@ -404,8 +404,8 @@ def test_tls_parser_rejects_duplicate_headers() -> None:
 
     response = asyncio.run(parse())
 
-    assert response.status == 400
-    assert b"duplicate_header" in response.body
+    _check(response.status == 400)
+    _check(b"duplicate_header" in response.body)
 
 def test_service_config_requires_operator_secrets_without_repr_leak(
     tmp_path: Path,
@@ -429,6 +429,6 @@ def test_service_config_requires_operator_secrets_without_repr_leak(
 
     config = EvaluatorServiceConfig.from_env()
 
-    assert config.suite_root == suite_root.resolve()
-    assert config.worker_build_sha256 == WORKER_BUILD
-    assert AUTH_FIXTURE not in repr(config)
+    _check(config.suite_root == suite_root.resolve())
+    _check(config.worker_build_sha256 == WORKER_BUILD)
+    _check(AUTH_FIXTURE not in repr(config))
