@@ -117,9 +117,16 @@ class ApplicationTransport(httpx.AsyncBaseTransport):
 
 
 def _bundle() -> HiddenSuiteBundle:
+    manifest = load_manifest(E_MANIFEST)
+    opportunity = manifest.functional_opportunity
+    if opportunity.spec_id is None or opportunity.spec_sha256 is None:
+        raise AssertionError("fixture requires functional opportunity spec")
     return HiddenSuiteBundle(
         suite_id="m18-3-public-service-suite",
         suite_hash=hashlib.sha256(SUITE_PAYLOAD).hexdigest(),
+        opportunity_spec_id=opportunity.spec_id,
+        opportunity_spec_hash=opportunity.spec_sha256,
+        opportunity_aggregation=opportunity.aggregation,
         total_cases=1,
         payload=SUITE_PAYLOAD,
     )
@@ -257,11 +264,14 @@ def test_worker_rejection_is_sanitized() -> None:
                 "Content-Type": "application/json",
             },
             body=b"""{
-                "protocol_version": "0.1",
+                "protocol_version": "0.2",
                 "request_id": "bad-suite",
                 "experiment_id": "fixture",
                 "suite_id": "missing-suite",
                 "suite_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "opportunity_spec_id": "dse-utility-kernel-v0.1",
+                "opportunity_spec_hash": "7284687308bd4dbdef7a7558349bbdd9718a6f788b155fb6d77634731e6f3967",
+                "opportunity_aggregation": "population_any",
                 "policy": {
                     "backend": "external-hardened",
                     "network_enabled": false,
