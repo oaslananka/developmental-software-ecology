@@ -133,7 +133,7 @@ def test_t_generation_one_reuses_text_lineage_and_only_sees_current_direct_messa
 
     for agent_id, agent in world.agents.items():
         assert agent.generation == 1
-        assert len(agent.actions.proposals) == 5
+        _check(len(agent.actions.proposals) == 5)
         assert len(agent.actions.culture_results) == 4
         _check(agent.functional_submission.current is not None)
         assert agent.goals.active_goal_id is None
