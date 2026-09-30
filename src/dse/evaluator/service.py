@@ -3,15 +3,12 @@ import asyncio
 import hmac
 import json
 import os
+import re
 import ssl
-import threading
-from collections.abc import Coroutine, Mapping
-from concurrent.futures import TimeoutError as FutureTimeoutError
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
 
 from pydantic import ValidationError
 
@@ -26,6 +23,7 @@ _HANDSHAKE_PATH = "/v1/handshake"
 _EVALUATE_PATH = "/v1/evaluate"
 _JSON_CONTENT_TYPE = "application/json"
 _ALLOWED_PATHS = frozenset({_HANDSHAKE_PATH, _EVALUATE_PATH})
+_HEADER_NAME = re.compile(r"^[!#$%&'*+.^_\x60|~0-9A-Za-z-]+$")
 
 
 @dataclass(frozen=True)
@@ -233,235 +231,157 @@ class EvaluatorServiceApplication:
         )
 
 
-class EvaluatorAsyncRuntime:
-    """One persistent asyncio loop with bounded evaluator-operation concurrency."""
+@dataclass(frozen=True)
+class _ParsedRequestHead:
+    method: str
+    path: str
+    headers: dict[str, str]
+    content_length: int | None
+
+
+class EvaluatorTLSServer:
+    """Small fail-closed TLS/HTTP boundary for the evaluator protocol."""
 
     def __init__(
         self,
-        *,
-        max_concurrent_operations: int = 1,
-        operation_timeout_seconds: float = 300.0,
-    ) -> None:
-        if max_concurrent_operations < 1:
-            raise ValueError(
-                "max_concurrent_operations must be positive"
-            )
-        if operation_timeout_seconds <= 0:
-            raise ValueError(
-                "operation_timeout_seconds must be positive"
-            )
-
-        self.max_concurrent_operations = (
-            max_concurrent_operations
-        )
-        self.operation_timeout_seconds = (
-            operation_timeout_seconds
-        )
-        self._loop = asyncio.new_event_loop()
-        self._ready = threading.Event()
-        self._closed = False
-        self._operation_slots: asyncio.Semaphore | None = None
-        self._thread = threading.Thread(
-            target=self._run_loop,
-            name="dse-evaluator-async-runtime",
-            daemon=False,
-        )
-        self._thread.start()
-        if not self._ready.wait(timeout=5.0):
-            raise RuntimeError(
-                "evaluator async runtime failed to start"
-            )
-
-    def run(
-        self,
-        coroutine: Coroutine[Any, Any, EvaluatorServiceResponse],
-    ) -> EvaluatorServiceResponse:
-        if self._closed:
-            coroutine.close()
-            raise RuntimeError(
-                "evaluator async runtime is closed"
-            )
-        future = asyncio.run_coroutine_threadsafe(
-            self._bounded(coroutine),
-            self._loop,
-        )
-        try:
-            return future.result(
-                timeout=self.operation_timeout_seconds
-            )
-        except FutureTimeoutError:
-            future.cancel()
-            raise
-
-    def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        self._loop.call_soon_threadsafe(
-            self._loop.stop
-        )
-        self._thread.join(timeout=5.0)
-        if self._thread.is_alive():
-            raise RuntimeError(
-                "evaluator async runtime failed to stop"
-            )
-        self._loop.close()
-
-    def _run_loop(self) -> None:
-        asyncio.set_event_loop(self._loop)
-        self._operation_slots = asyncio.Semaphore(
-            self.max_concurrent_operations
-        )
-        self._ready.set()
-        self._loop.run_forever()
-
-    async def _bounded(
-        self,
-        coroutine: Coroutine[Any, Any, EvaluatorServiceResponse],
-    ) -> EvaluatorServiceResponse:
-        slots = self._operation_slots
-        if slots is None:
-            coroutine.close()
-            raise RuntimeError(
-                "evaluator async runtime is not ready"
-            )
-        async with slots:
-            return await coroutine
-
-
-class EvaluatorHTTPServer(ThreadingHTTPServer):
-    """Threaded ingress with explicit connection and worker-operation bounds."""
-
-    daemon_threads = False
-    block_on_close = True
-
-    def __init__(
-        self,
-        server_address: tuple[str, int],
-        handler_class: type[BaseHTTPRequestHandler],
         *,
         application: EvaluatorServiceApplication,
+        ssl_context: ssl.SSLContext,
         request_timeout_seconds: float,
+        operation_timeout_seconds: float,
         max_connections: int,
         max_concurrent_operations: int,
-        operation_timeout_seconds: float,
+        max_header_bytes: int = 16_384,
     ) -> None:
         if request_timeout_seconds <= 0:
             raise ValueError(
                 "request_timeout_seconds must be positive"
             )
+        if operation_timeout_seconds <= 0:
+            raise ValueError(
+                "operation_timeout_seconds must be positive"
+            )
         if max_connections < 1:
             raise ValueError(
                 "max_connections must be positive"
             )
+        if max_concurrent_operations < 1:
+            raise ValueError(
+                "max_concurrent_operations must be positive"
+            )
+        if max_header_bytes < 1024:
+            raise ValueError(
+                "max_header_bytes must be at least 1024"
+            )
+
         self.application = application
+        self.ssl_context = ssl_context
         self.request_timeout_seconds = (
             request_timeout_seconds
         )
+        self.operation_timeout_seconds = (
+            operation_timeout_seconds
+        )
         self.max_connections = max_connections
-        self._connection_slots = threading.BoundedSemaphore(
-            max_connections
+        self.max_concurrent_operations = (
+            max_concurrent_operations
         )
-        self.async_runtime = EvaluatorAsyncRuntime(
-            max_concurrent_operations=max_concurrent_operations,
-            operation_timeout_seconds=operation_timeout_seconds,
-        )
-        try:
-            super().__init__(
-                server_address,
-                handler_class,
-            )
-        except Exception:
-            self.async_runtime.close()
-            raise
+        self.max_header_bytes = max_header_bytes
+        self._active_connections = 0
+        self._connection_tasks: set[asyncio.Task[None]] = set()
+        self._operation_slots: asyncio.Semaphore | None = None
 
-    def get_request(self):
-        connection, address = super().get_request()
-        connection.settimeout(
-            self.request_timeout_seconds
-        )
-        return connection, address
-
-    def process_request(
+    async def serve_forever(
         self,
-        request,
-        client_address,
+        host: str,
+        port: int,
     ) -> None:
-        acquired = self._connection_slots.acquire(
-            timeout=self.request_timeout_seconds
+        self._operation_slots = asyncio.Semaphore(
+            self.max_concurrent_operations
         )
-        if not acquired:
-            self.shutdown_request(request)
-            return
-        try:
-            super().process_request(
-                request,
-                client_address,
-            )
-        except Exception:
-            self._connection_slots.release()
-            raise
+        server = await asyncio.start_server(
+            self._accept_connection,
+            host=host,
+            port=port,
+            ssl=self.ssl_context,
+            ssl_handshake_timeout=(
+                self.request_timeout_seconds
+            ),
+            limit=self.max_header_bytes + 1,
+            backlog=self.max_connections,
+        )
+        async with server:
+            await server.serve_forever()
 
-    def process_request_thread(
+    def _accept_connection(
         self,
-        request,
-        client_address,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
     ) -> None:
-        try:
-            super().process_request_thread(
-                request,
-                client_address,
-            )
-        finally:
-            self._connection_slots.release()
-
-    def server_close(self) -> None:
-        try:
-            super().server_close()
-        finally:
-            self.async_runtime.close()
-
-
-class EvaluatorRequestHandler(BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.1"
-    server_version = "DSEEvaluator/0.1"
-    sys_version = ""
-
-    def do_POST(self) -> None:
-        self._handle_request()
-
-    def do_GET(self) -> None:
-        self._handle_request()
-
-    def do_PUT(self) -> None:
-        self._handle_request()
-
-    def do_DELETE(self) -> None:
-        self._handle_request()
-
-    def _handle_request(self) -> None:
-        server = self.server
-        if not isinstance(
-            server,
-            EvaluatorHTTPServer,
-        ):
-            self.send_error(
-                HTTPStatus.INTERNAL_SERVER_ERROR
-            )
+        if self._active_connections >= self.max_connections:
+            writer.close()
             return
 
-        headers = {
-            key: value
-            for key, value in self.headers.items()
-        }
-        length_value = self.headers.get(
-            "Content-Length"
+        self._active_connections += 1
+        task = asyncio.create_task(
+            self._handle_connection(
+                reader,
+                writer,
+            )
         )
-        content_length: int | None = None
+        self._connection_tasks.add(task)
+        task.add_done_callback(
+            self._connection_finished
+        )
 
-        if self.command == "POST":
-            if length_value is None:
-                self._finish(
+    def _connection_finished(
+        self,
+        task: asyncio.Task[None],
+    ) -> None:
+        self._connection_tasks.discard(task)
+        self._active_connections -= 1
+        try:
+            task.result()
+        except Exception:
+            return
+
+    async def _handle_connection(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        try:
+            parsed = await self._read_request_head(
+                reader
+            )
+            if isinstance(
+                parsed,
+                EvaluatorServiceResponse,
+            ):
+                await self._write_response(
+                    writer,
+                    parsed,
+                )
+                return
+
+            preflight = self.application.preflight(
+                method=parsed.method,
+                path=parsed.path,
+                headers=parsed.headers,
+                content_length=(
+                    parsed.content_length
+                ),
+            )
+            if preflight is not None:
+                await self._write_response(
+                    writer,
+                    preflight,
+                )
+                return
+
+            if parsed.content_length is None:
+                await self._write_response(
+                    writer,
                     EvaluatorServiceResponse.json(
                         HTTPStatus.LENGTH_REQUIRED,
                         {
@@ -469,124 +389,250 @@ class EvaluatorRequestHandler(BaseHTTPRequestHandler):
                                 "content_length_required"
                             )
                         },
-                    )
-                )
-                return
-            try:
-                content_length = int(length_value)
-            except ValueError:
-                self._finish(
-                    EvaluatorServiceResponse.json(
-                        HTTPStatus.BAD_REQUEST,
-                        {
-                            "error": (
-                                "invalid_content_length"
-                            )
-                        },
-                    )
-                )
-                return
-            if content_length < 0:
-                self._finish(
-                    EvaluatorServiceResponse.json(
-                        HTTPStatus.BAD_REQUEST,
-                        {
-                            "error": (
-                                "invalid_content_length"
-                            )
-                        },
-                    )
+                    ),
                 )
                 return
 
-        preflight = server.application.preflight(
-            method=self.command,
-            path=self.path,
+            try:
+                body = await asyncio.wait_for(
+                    reader.readexactly(
+                        parsed.content_length
+                    ),
+                    timeout=self.request_timeout_seconds,
+                )
+            except asyncio.TimeoutError:
+                await self._write_response(
+                    writer,
+                    EvaluatorServiceResponse.json(
+                        HTTPStatus.REQUEST_TIMEOUT,
+                        {"error": "request_timeout"},
+                    ),
+                )
+                return
+            except asyncio.IncompleteReadError:
+                await self._write_response(
+                    writer,
+                    EvaluatorServiceResponse.json(
+                        HTTPStatus.BAD_REQUEST,
+                        {"error": "incomplete_body"},
+                    ),
+                )
+                return
+
+            slots = self._operation_slots
+            if slots is None:
+                await self._write_response(
+                    writer,
+                    EvaluatorServiceResponse.json(
+                        HTTPStatus.SERVICE_UNAVAILABLE,
+                        {"error": "evaluator_unavailable"},
+                    ),
+                )
+                return
+
+            try:
+                async with slots:
+                    response = await asyncio.wait_for(
+                        self.application.handle(
+                            method=parsed.method,
+                            path=parsed.path,
+                            headers=parsed.headers,
+                            body=body,
+                        ),
+                        timeout=(
+                            self.operation_timeout_seconds
+                        ),
+                    )
+            except asyncio.TimeoutError:
+                response = EvaluatorServiceResponse.json(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "evaluator_timeout"},
+                )
+
+            await self._write_response(
+                writer,
+                response,
+            )
+        except Exception:
+            try:
+                await self._write_response(
+                    writer,
+                    EvaluatorServiceResponse.json(
+                        HTTPStatus.BAD_REQUEST,
+                        {"error": "invalid_request"},
+                    ),
+                )
+            except Exception:
+                pass
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except (ConnectionError, OSError):
+                pass
+
+    async def _read_request_head(
+        self,
+        reader: asyncio.StreamReader,
+    ) -> _ParsedRequestHead | EvaluatorServiceResponse:
+        try:
+            raw = await asyncio.wait_for(
+                reader.readuntil(b"\r\n\r\n"),
+                timeout=self.request_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            return EvaluatorServiceResponse.json(
+                HTTPStatus.REQUEST_TIMEOUT,
+                {"error": "request_timeout"},
+            )
+        except asyncio.LimitOverrunError:
+            return EvaluatorServiceResponse.json(
+                HTTPStatus.REQUEST_HEADER_FIELDS_TOO_LARGE,
+                {"error": "headers_too_large"},
+            )
+        except asyncio.IncompleteReadError:
+            return EvaluatorServiceResponse.json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "incomplete_headers"},
+            )
+
+        if len(raw) > self.max_header_bytes:
+            return EvaluatorServiceResponse.json(
+                HTTPStatus.REQUEST_HEADER_FIELDS_TOO_LARGE,
+                {"error": "headers_too_large"},
+            )
+
+        try:
+            text = raw.decode("ascii")
+        except UnicodeDecodeError:
+            return EvaluatorServiceResponse.json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_headers"},
+            )
+
+        lines = text[:-4].split("\r\n")
+        if not lines:
+            return EvaluatorServiceResponse.json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_request_line"},
+            )
+
+        request_parts = lines[0].split(" ")
+        if len(request_parts) != 3:
+            return EvaluatorServiceResponse.json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_request_line"},
+            )
+        method, path, version = request_parts
+        if (
+            not method
+            or not path.startswith("/")
+            or version != "HTTP/1.1"
+        ):
+            return EvaluatorServiceResponse.json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_request_line"},
+            )
+
+        headers: dict[str, str] = {}
+        for line in lines[1:]:
+            if (
+                not line
+                or line[0] in " \t"
+                or ":" not in line
+            ):
+                return EvaluatorServiceResponse.json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "invalid_headers"},
+                )
+            name, value = line.split(":", maxsplit=1)
+            if not _HEADER_NAME.fullmatch(name):
+                return EvaluatorServiceResponse.json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "invalid_headers"},
+                )
+            normalized_name = name.lower()
+            if normalized_name in headers:
+                return EvaluatorServiceResponse.json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "duplicate_header"},
+                )
+            if any(
+                ord(character) < 32
+                and character != "\t"
+                for character in value
+            ):
+                return EvaluatorServiceResponse.json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "invalid_headers"},
+                )
+            headers[normalized_name] = value.strip()
+
+        content_length: int | None = None
+        length_value = headers.get(
+            "content-length"
+        )
+        if length_value is not None:
+            try:
+                content_length = int(
+                    length_value,
+                    10,
+                )
+            except ValueError:
+                return EvaluatorServiceResponse.json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "invalid_content_length"},
+                )
+            if content_length < 0:
+                return EvaluatorServiceResponse.json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "invalid_content_length"},
+                )
+            if (
+                content_length
+                > self.application.max_request_bytes
+            ):
+                return EvaluatorServiceResponse.json(
+                    HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                    {"error": "request_too_large"},
+                )
+
+        return _ParsedRequestHead(
+            method=method,
+            path=path,
             headers=headers,
             content_length=content_length,
         )
-        if preflight is not None:
-            self._finish(preflight)
-            return
 
-        assert content_length is not None
-        try:
-            body = self.rfile.read(
-                content_length
-            )
-        except (TimeoutError, OSError):
-            self._finish(
-                EvaluatorServiceResponse.json(
-                    HTTPStatus.REQUEST_TIMEOUT,
-                    {"error": "request_timeout"},
-                )
-            )
-            return
-
-        if len(body) != content_length:
-            self._finish(
-                EvaluatorServiceResponse.json(
-                    HTTPStatus.BAD_REQUEST,
-                    {"error": "incomplete_body"},
-                )
-            )
-            return
-
-        try:
-            response = server.async_runtime.run(
-                server.application.handle(
-                    method=self.command,
-                    path=self.path,
-                    headers=headers,
-                    body=body,
-                )
-            )
-        except FutureTimeoutError:
-            response = EvaluatorServiceResponse.json(
-                HTTPStatus.SERVICE_UNAVAILABLE,
-                {"error": "evaluator_timeout"},
-            )
-        except RuntimeError:
-            response = EvaluatorServiceResponse.json(
-                HTTPStatus.SERVICE_UNAVAILABLE,
-                {"error": "evaluator_unavailable"},
-            )
-        self._finish(response)
-
-    def _finish(
-        self,
-        response: EvaluatorServiceResponse,
-    ) -> None:
-        self.close_connection = True
-        self._write_response(response)
-
-    def _write_response(
-        self,
+    @staticmethod
+    async def _write_response(
+        writer: asyncio.StreamWriter,
         response: EvaluatorServiceResponse,
     ) -> None:
         try:
-            self.send_response(response.status)
-            for name, value in response.headers:
-                self.send_header(name, value)
-            self.send_header(
-                "Connection",
-                "close",
-            )
-            self.end_headers()
-            self.wfile.write(response.body)
-        except (
-            BrokenPipeError,
-            ConnectionResetError,
-            OSError,
-        ):
-            self.close_connection = True
+            status = HTTPStatus(response.status)
+        except ValueError:
+            status = HTTPStatus.INTERNAL_SERVER_ERROR
 
-    def log_message(
-        self,
-        log_format: str,
-        *args,
-    ) -> None:
-        return
+        header_lines = [
+            (
+                f"HTTP/1.1 {status.value} "
+                f"{status.phrase}\r\n"
+            ).encode("ascii")
+        ]
+        for name, value in response.headers:
+            header_lines.append(
+                f"{name}: {value}\r\n".encode(
+                    "ascii"
+                )
+            )
+        header_lines.append(
+            b"Connection: close\r\n\r\n"
+        )
+        writer.writelines(
+            [*header_lines, response.body]
+        )
+        await writer.drain()
 
 
 @dataclass(frozen=True)
@@ -604,10 +650,11 @@ class EvaluatorServiceConfig:
         "gcr.io/distroless/python3-debian13:nonroot"
     )
     max_request_bytes: int = 2_097_152
+    max_header_bytes: int = 16_384
     request_timeout_seconds: float = 30.0
+    operation_timeout_seconds: float = 300.0
     max_connections: int = 16
     max_concurrent_operations: int = 1
-    operation_timeout_seconds: float = 300.0
 
     @classmethod
     def from_env(
@@ -657,11 +704,23 @@ class EvaluatorServiceConfig:
                 minimum=1024,
                 maximum=67_108_864,
             ),
+            max_header_bytes=_env_int(
+                "DSE_EVALUATOR_MAX_HEADER_BYTES",
+                16_384,
+                minimum=1024,
+                maximum=65_536,
+            ),
             request_timeout_seconds=_env_float(
                 "DSE_EVALUATOR_REQUEST_TIMEOUT_SECONDS",
                 30.0,
                 minimum=1.0,
                 maximum=300.0,
+            ),
+            operation_timeout_seconds=_env_float(
+                "DSE_EVALUATOR_OPERATION_TIMEOUT_SECONDS",
+                300.0,
+                minimum=1.0,
+                maximum=900.0,
             ),
             max_connections=_env_int(
                 "DSE_EVALUATOR_MAX_CONNECTIONS",
@@ -674,12 +733,6 @@ class EvaluatorServiceConfig:
                 1,
                 minimum=1,
                 maximum=8,
-            ),
-            operation_timeout_seconds=_env_float(
-                "DSE_EVALUATOR_OPERATION_TIMEOUT_SECONDS",
-                300.0,
-                minimum=1.0,
-                maximum=900.0,
             ),
         )
 
@@ -708,25 +761,9 @@ def build_service(
     )
 
 
-def serve_https(
+def _tls_context(
     config: EvaluatorServiceConfig,
-) -> None:
-    application = build_service(config)
-    server = EvaluatorHTTPServer(
-        (config.host, config.port),
-        EvaluatorRequestHandler,
-        application=application,
-        request_timeout_seconds=(
-            config.request_timeout_seconds
-        ),
-        max_connections=config.max_connections,
-        max_concurrent_operations=(
-            config.max_concurrent_operations
-        ),
-        operation_timeout_seconds=(
-            config.operation_timeout_seconds
-        ),
-    )
+) -> ssl.SSLContext:
     context = ssl.SSLContext(
         ssl.PROTOCOL_TLS_SERVER
     )
@@ -737,16 +774,40 @@ def serve_https(
         certfile=config.tls_cert,
         keyfile=config.tls_key,
     )
-    server.socket = context.wrap_socket(
-        server.socket,
-        server_side=True,
+    return context
+
+
+async def _serve_https_async(
+    config: EvaluatorServiceConfig,
+) -> None:
+    application = build_service(config)
+    server = EvaluatorTLSServer(
+        application=application,
+        ssl_context=_tls_context(config),
+        request_timeout_seconds=(
+            config.request_timeout_seconds
+        ),
+        operation_timeout_seconds=(
+            config.operation_timeout_seconds
+        ),
+        max_connections=config.max_connections,
+        max_concurrent_operations=(
+            config.max_concurrent_operations
+        ),
+        max_header_bytes=config.max_header_bytes,
     )
-    try:
-        server.serve_forever(
-            poll_interval=0.5
-        )
-    finally:
-        server.server_close()
+    await server.serve_forever(
+        config.host,
+        config.port,
+    )
+
+
+def serve_https(
+    config: EvaluatorServiceConfig,
+) -> None:
+    asyncio.run(
+        _serve_https_async(config)
+    )
 
 
 def main() -> None:
