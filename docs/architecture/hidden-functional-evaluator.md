@@ -35,7 +35,7 @@ Strict V0.1 runs use:
 
 ```text
 spec_id     = dse-utility-kernel-v0.1
-spec_sha256 = 7284687308bd4dbdef7a7558349bbdd9718a6f788b155fb6d77634731e6f3967
+spec_sha256 = 8c5dbb384df0bb73e2b8db6dd9b8a97cf31ef904ecca8a5bf4411f5e8e696439
 aggregation = population_any
 ```
 
