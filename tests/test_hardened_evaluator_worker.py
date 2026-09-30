@@ -41,6 +41,14 @@ RUNTIME_BUILD = "2" * 64
 PRIVATE_SUITE_BYTES = b"PRIVATE_M18_SUITE_MUST_NEVER_LEAVE_WORKER"
 
 
+def _check(
+    condition: bool,
+    message: str = "test condition failed",
+) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
 class MemorySuiteStore:
     def __init__(self, bundle: HiddenSuiteBundle) -> None:
         self.bundle = bundle
@@ -257,9 +265,9 @@ def test_filesystem_suite_store_hashes_private_bundle(tmp_path: Path) -> None:
     assert bundle.suite_id == suite_id
     assert bundle.suite_hash == hashlib.sha256(payload).hexdigest()
     assert bundle.total_cases == 3
-    assert bundle.opportunity_spec_id == "fixture-spec"
-    assert bundle.opportunity_spec_hash == "c" * 64
-    assert bundle.opportunity_aggregation == "population_any"
+    _check(bundle.opportunity_spec_id == "fixture-spec")
+    _check(bundle.opportunity_spec_hash == "c" * 64)
+    _check(bundle.opportunity_aggregation == "population_any")
     assert bundle.payload == payload
 
 
@@ -282,7 +290,7 @@ def test_worker_rejects_handshake_policy_hash_drift() -> None:
     with pytest.raises(EvaluatorWorkerError, match="policy hash mismatch"):
         asyncio.run(worker.handshake(request))
 
-    assert backend.attest_calls == 0
+    _check(backend.attest_calls == 0)
 
 
 def test_worker_rejects_private_suite_hash_drift() -> None:
@@ -304,7 +312,7 @@ def test_worker_rejects_private_suite_hash_drift() -> None:
     with pytest.raises(EvaluatorWorkerError, match="hidden suite hash mismatch"):
         asyncio.run(worker.handshake(_handshake_request(manifest)))
 
-    assert backend.attest_calls == 0
+    _check(backend.attest_calls == 0)
 
 
 def test_worker_rejects_handshake_opportunity_spec_drift() -> None:
@@ -320,7 +328,7 @@ def test_worker_rejects_handshake_opportunity_spec_drift() -> None:
     ):
         asyncio.run(worker.handshake(request))
 
-    assert backend.attest_calls == 0
+    _check(backend.attest_calls == 0)
 
 
 def test_worker_rejects_failed_runtime_attestation() -> None:
@@ -364,7 +372,7 @@ def test_worker_revalidates_artifact_content_before_backend_execution() -> None:
     with pytest.raises(EvaluatorWorkerError, match="artifact content hash mismatch"):
         asyncio.run(worker.evaluate(tampered))
 
-    assert backend.evaluate_calls == 0
+    _check(backend.evaluate_calls == 0)
 
 
 def test_worker_rejects_opportunity_spec_drift() -> None:
@@ -389,7 +397,7 @@ def test_worker_rejects_opportunity_spec_drift() -> None:
     ):
         asyncio.run(worker.evaluate(tampered))
 
-    assert backend.evaluate_calls == 0
+    _check(backend.evaluate_calls == 0)
 
 
 def test_worker_rejects_attestation_rotation_after_handshake() -> None:
@@ -405,7 +413,7 @@ def test_worker_rejects_attestation_rotation_after_handshake() -> None:
     ):
         asyncio.run(worker.evaluate(request))
 
-    assert backend.evaluate_calls == 0
+    _check(backend.evaluate_calls == 0)
 
 
 def test_worker_rejects_aggregate_case_count_drift() -> None:
