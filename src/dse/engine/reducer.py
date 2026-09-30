@@ -6,6 +6,8 @@ from dse.contracts.agent import (
     CultureActionResultRecord,
     EpisodicMemory,
     ForgeActionResultRecord,
+    FunctionalSubmissionRecord,
+    FunctionalSubmissionState,
     GoalRecord,
     GoalState,
     GoalStatus,
@@ -74,6 +76,9 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
                 "tool_executions": len(agent.actions.executions),
                 "forge_results": len(agent.actions.forge_results),
                 "culture_results": len(agent.actions.culture_results),
+                "functional_submission": int(
+                    agent.functional_submission.current is not None
+                ),
                 "episodic_memories": len(agent.memory.episodes),
             }
             if event.payload["private_state_counts"] != expected_counts:
@@ -126,6 +131,7 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
             agent.cognition = CognitionState()
             agent.goals = GoalState()
             agent.actions = ActionState()
+            agent.functional_submission = FunctionalSubmissionState()
             agent.memory = MemoryState()
             agent.last_active_tick = birth_tick
             agent.state_version = 0
@@ -696,6 +702,54 @@ def apply_event(world: WorldState, event: WorldEvent) -> None:
 
             action.status = ActionStatus.REJECTED
             agent.actions.culture_results.append(result)
+            agent.state_version += 1
+
+        case "functional.submission.published":
+            agent = _agent_for_event(world, event)
+            action = _proposed_action(
+                agent,
+                str(event.payload["action_id"]),
+            )
+            if action.kind != "functional_submit":
+                raise ValueError(
+                    "Functional submission requires functional_submit action"
+                )
+            submission = FunctionalSubmissionRecord.model_validate(
+                event.payload
+            )
+            if submission.action_id != action.action_id:
+                raise ValueError("Functional submission action_id mismatch")
+            if submission.agent_id != agent.agent_id:
+                raise ValueError("Functional submission agent mismatch")
+            if submission.generation != agent.generation:
+                raise ValueError("Functional submission generation mismatch")
+            if submission.created_tick != event.world_tick:
+                raise ValueError("Functional submission tick mismatch")
+            if submission.path != action.target:
+                raise ValueError("Functional submission path mismatch")
+            if submission.content != (action.draft_content or ""):
+                raise ValueError("Functional submission content mismatch")
+            encoded = submission.content.encode("utf-8")
+            if submission.content_bytes != len(encoded):
+                raise ValueError("Functional submission byte count mismatch")
+            if submission.content_sha256 != state_hash_bytes(encoded):
+                raise ValueError("Functional submission hash mismatch")
+
+            action.status = ActionStatus.EXECUTED
+            agent.functional_submission.current = submission
+            agent.state_version += 1
+
+        case "functional.submission.rejected":
+            agent = _agent_for_event(world, event)
+            action = _proposed_action(
+                agent,
+                str(event.payload["action_id"]),
+            )
+            if action.kind != "functional_submit":
+                raise ValueError(
+                    "Functional rejection requires functional_submit action"
+                )
+            action.status = ActionStatus.REJECTED
             agent.state_version += 1
 
         case "memory.episode.recorded":
