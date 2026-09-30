@@ -343,6 +343,6 @@ def test_p_and_ril_observed_compute_match_under_equal_budget() -> None:
     assert usages["P"].total_tokens == 3080
     assert usages["RIL"].total_tokens == 3080
     _check(usages["P"].action_proposals == 50)
-    assert usages["RIL"].action_proposals == 50
+    _check(usages["RIL"].action_proposals == 50)
     assert usages["P"].forge_operations == 0
     assert usages["RIL"].forge_operations == 0
