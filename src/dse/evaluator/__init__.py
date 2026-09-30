@@ -11,6 +11,14 @@ from dse.evaluator.http import (
     ExternalEvaluatorTransportError,
     ExternalHiddenEvaluatorSession,
 )
+from dse.evaluator.service import (
+    EvaluatorServiceApplication,
+    EvaluatorServiceConfig,
+    EvaluatorServiceResponse,
+    EvaluatorTLSServer,
+    build_service,
+    serve_https,
+)
 from dse.evaluator.suite_store import (
     FilesystemHiddenSuiteStore,
     HiddenSuiteBundle,
@@ -24,6 +32,10 @@ from dse.evaluator.worker import (
 )
 
 __all__ = [
+    "EvaluatorServiceApplication",
+    "EvaluatorServiceConfig",
+    "EvaluatorServiceResponse",
+    "EvaluatorTLSServer",
     "EvaluatorWorkerError",
     "ExternalEvaluatorClient",
     "ExternalEvaluatorProtocolError",
@@ -38,4 +50,6 @@ __all__ = [
     "HiddenSuiteBundle",
     "HiddenSuiteError",
     "HiddenSuiteStore",
+    "build_service",
+    "serve_https",
 ]

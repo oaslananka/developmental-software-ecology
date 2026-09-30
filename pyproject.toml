@@ -16,6 +16,9 @@ dependencies = [
   "httpx>=0.28,<1",
 ]
 
+[project.scripts]
+dse-evaluator-service = "dse.evaluator.service:main"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8,<9",
