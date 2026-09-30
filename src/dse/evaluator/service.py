@@ -400,7 +400,7 @@ class EvaluatorTLSServer:
                     ),
                     timeout=self.request_timeout_seconds,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await self._write_response(
                     writer,
                     EvaluatorServiceResponse.json(
@@ -443,7 +443,7 @@ class EvaluatorTLSServer:
                             self.operation_timeout_seconds
                         ),
                     )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 response = EvaluatorServiceResponse.json(
                     HTTPStatus.SERVICE_UNAVAILABLE,
                     {"error": "evaluator_timeout"},
@@ -480,7 +480,7 @@ class EvaluatorTLSServer:
                 reader.readuntil(b"\r\n\r\n"),
                 timeout=self.request_timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return EvaluatorServiceResponse.json(
                 HTTPStatus.REQUEST_TIMEOUT,
                 {"error": "request_timeout"},
