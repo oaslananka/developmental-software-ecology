@@ -146,6 +146,32 @@ def test_invalid_provider_output_is_rejected() -> None:
         asyncio.run(run())
 
 
+
+@pytest.mark.parametrize(
+    "response_schema",
+    [
+        "CognitionDecision/v0.4",
+        "CognitionDecision/v0.5",
+        "CognitionDecision/v0.6",
+    ],
+)
+def test_action_prompts_explicitly_allow_functional_submit(
+    response_schema: str,
+) -> None:
+    provider = OpenCodeProvider(model="space-bunny-free")
+    request = _request().model_copy(update={"response_schema": response_schema})
+    prompt = provider._system_prompt(request)
+
+    expected = (
+        "Allowed action kinds are inspect_workspace, draft_artifact, "
+        "run_validation, functional_submit"
+    )
+    if expected not in prompt:
+        raise AssertionError(
+            f"{response_schema} prompt omitted functional_submit from allowed actions"
+        )
+
+
 def test_factory_builds_opencode_provider_without_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -32,6 +32,7 @@ class ActionProposal(StrictModel):
         "inspect_workspace",
         "draft_artifact",
         "run_validation",
+        "functional_submit",
         "forge_create_repository",
         "forge_inspect_repository",
         "forge_publish_artifact",
@@ -58,6 +59,7 @@ class ActionProposal(StrictModel):
         text_publish = self.kind == "text_publish"
         content_kinds = {
             "draft_artifact",
+            "functional_submit",
             "forge_publish_artifact",
             "text_publish",
             "social_send_message",

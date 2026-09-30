@@ -33,6 +33,14 @@ CONDITION_PATHS = {
 M13_MANIFEST = Path("experiments/v0_1/controlled-turnover-fake.yaml")
 
 
+def _check(
+    condition: bool,
+    message: str = "test condition failed",
+) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
 def _manifests() -> dict[str, ExperimentManifest]:
     return {
         condition: load_manifest(path)
@@ -85,7 +93,7 @@ def test_all_primary_condition_manifests_share_compute_budget() -> None:
         assert manifest.agents.turnover.ticks == [150]
         assert manifest.agents.cognition.model_calls_per_cycle == 7
         assert manifest.agents.cognition.interval_ticks == 20
-        assert manifest.agents.actions.proposals_per_cycle == 4
+        _check(manifest.agents.actions.proposals_per_cycle == 5)
         assert manifest.agents.memory.capacity == 32
         assert manifest.runtime.forge.operations_per_cycle == 4
         assert manifest.runtime.text_culture.operations_per_cycle == 4
@@ -98,6 +106,13 @@ def test_all_primary_condition_manifests_share_compute_budget() -> None:
         )
         assert manifest.evaluation.sandbox_enabled is True
         assert manifest.evaluation.sandbox_policy.backend == "external-hardened"
+        _check(
+            manifest.functional_opportunity_profile
+            == "v0_1-functional-submission"
+        )
+        _check(manifest.functional_opportunity.enabled is True)
+        _check(manifest.functional_opportunity.submission_path == "submission.py")
+        _check(manifest.functional_opportunity.entrypoint == "solve")
 
 
 def test_condition_contract_rejects_treatment_drift() -> None:
@@ -144,6 +159,10 @@ def test_evaluation_profile_roundtrips_canonical_manifest() -> None:
 
     assert restored == manifest
     assert restored.evaluation_profile == "v0_1-hidden-functional-suite"
+    _check(
+        restored.functional_opportunity_profile
+        == "v0_1-functional-submission"
+    )
 
 
 def test_evaluation_profile_rejects_expanded_config_drift() -> None:
@@ -157,6 +176,18 @@ def test_evaluation_profile_rejects_expanded_config_drift() -> None:
     ):
         ExperimentManifest.model_validate(raw)
 
+
+
+def test_functional_opportunity_profile_rejects_expanded_config_drift() -> None:
+    manifest = load_manifest(CONDITION_PATHS["P"])
+    raw = manifest.model_dump(mode="json")
+    raw["functional_opportunity"]["submission_path"] = "other.py"
+
+    with pytest.raises(
+        ValidationError,
+        match="functional_opportunity does not match",
+    ):
+        ExperimentManifest.model_validate(raw)
 
 def test_ril_requires_explicit_isolated_topology() -> None:
     raw = yaml.safe_load(
@@ -185,18 +216,27 @@ def test_support_gate_reports_missing_runtime_surfaces_without_theater() -> None
         for condition, manifest in manifests.items()
     }
 
-    assert reports["P"].research_runtime_ready is True
-    assert reports["P"].missing_surfaces == []
+    _check(reports["P"].research_runtime_ready is False)
+    _check(
+        reports["P"].missing_surfaces
+        == ["attested_hardened_evaluator_runtime"]
+    )
     assert any(
         "limited communication" in note
         for note in reports["P"].notes
     )
 
-    assert reports["RIL"].research_runtime_ready is True
-    assert reports["RIL"].missing_surfaces == []
+    _check(reports["RIL"].research_runtime_ready is False)
+    _check(
+        reports["RIL"].missing_surfaces
+        == ["attested_hardened_evaluator_runtime"]
+    )
 
-    assert reports["T"].research_runtime_ready is True
-    assert reports["T"].missing_surfaces == []
+    _check(reports["T"].research_runtime_ready is False)
+    _check(
+        reports["T"].missing_surfaces
+        == ["attested_hardened_evaluator_runtime"]
+    )
 
     assert reports["E"].research_runtime_ready is False
     assert reports["E"].missing_surfaces == [
@@ -221,11 +261,11 @@ def test_harness_reports_full_matrix_but_does_not_claim_false_readiness() -> Non
         item.condition: item
         for item in report.support
     }
-    assert support["P"].research_runtime_ready is True
-    assert support["RIL"].research_runtime_ready is True
+    _check(support["P"].research_runtime_ready is False)
+    _check(support["RIL"].research_runtime_ready is False)
     assert support["E"].research_runtime_ready is False
     assert support["ES"].research_runtime_ready is False
-    assert support["T"].research_runtime_ready is True
+    _check(support["T"].research_runtime_ready is False)
 
 
 def test_compute_budget_drift_is_rejected_even_if_treatment_is_valid() -> None:
@@ -302,7 +342,7 @@ def test_p_and_ril_observed_compute_match_under_equal_budget() -> None:
     assert usages["RIL"].model_calls == 70
     assert usages["P"].total_tokens == 3080
     assert usages["RIL"].total_tokens == 3080
-    assert usages["P"].action_proposals == 40
-    assert usages["RIL"].action_proposals == 40
+    _check(usages["P"].action_proposals == 50)
+    _check(usages["RIL"].action_proposals == 50)
     assert usages["P"].forge_operations == 0
     assert usages["RIL"].forge_operations == 0

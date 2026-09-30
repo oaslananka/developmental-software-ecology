@@ -33,6 +33,15 @@ class DeterministicFakeProvider:
         action_budget = int(
             request.context.get("action_proposals_remaining", 0) or 0
         )
+        functional_opportunity_enabled = bool(
+            request.context.get("functional_opportunity")
+        )
+        inspect_budget_floor = (
+            3 if functional_opportunity_enabled else 2
+        )
+        draft_budget = (
+            2 if functional_opportunity_enabled else 1
+        )
 
         if (
             request.response_schema
@@ -72,7 +81,7 @@ class DeterministicFakeProvider:
             and action_generation_enabled
             and active_goal is not None
             and float(active_goal.get("progress", 0.0)) == 0.0
-            and action_budget >= 2
+            and action_budget >= inspect_budget_floor
         ):
             decision = CognitionDecision(
                 decision="propose_action",
@@ -97,7 +106,7 @@ class DeterministicFakeProvider:
             and action_generation_enabled
             and active_goal is not None
             and float(active_goal.get("progress", 0.0)) == 0.0
-            and action_budget == 1
+            and action_budget == draft_budget
         ):
             decision = CognitionDecision(
                 decision="propose_action",
@@ -124,11 +133,25 @@ class DeterministicFakeProvider:
             )
         elif (
             request.response_schema == "CognitionDecision/v0.4"
+            and action_generation_enabled
+            and active_goal is not None
+            and action_budget == 1
+            and request.context.get("functional_opportunity")
+            and request.context.get("functional_submission") is None
+        ):
+            decision = _functional_submission_decision(request)
+        elif (
+            request.response_schema == "CognitionDecision/v0.4"
             and active_goal is not None
         ):
             progress = float(active_goal.get("progress", 0.0))
 
-            if progress < 0.5:
+            if request.context.get("functional_submission") is not None:
+                decision = _goal_completion(
+                    "The current generation exported a bounded functional "
+                    "submission after exercising its available work surfaces."
+                )
+            elif progress < 0.5:
                 decision = CognitionDecision(
                     decision="update_goal",
                     reason_summary="The bounded action intents establish initial progress.",
@@ -567,6 +590,24 @@ def _culture_v06_decision(
         and len(text_results) >= required_text_results
         and len(social_results) >= required_social_results
     )
+    if (
+        treatment_complete
+        and action_generation_enabled
+        and action_budget > 0
+        and context.get("functional_opportunity")
+        and context.get("functional_submission") is None
+    ):
+        return _functional_submission_decision(request)
+
+    if (
+        treatment_complete
+        and context.get("functional_submission") is not None
+    ):
+        return _goal_completion(
+            "The current generation exercised its treatment channels and "
+            "exported the common functional submission."
+        )
+
     if treatment_complete and progress < 0.8:
         return CognitionDecision(
             decision="update_goal",
@@ -789,6 +830,24 @@ def _forge_v05_decision(
                     ),
                 )
 
+    if (
+        len(forge_results) >= 4
+        and action_generation_enabled
+        and action_budget > 0
+        and context.get("functional_opportunity")
+        and context.get("functional_submission") is None
+    ):
+        return _functional_submission_decision(request)
+
+    if (
+        len(forge_results) >= 4
+        and context.get("functional_submission") is not None
+    ):
+        return _goal_completion(
+            "The current generation reused executable culture and exported "
+            "the common functional submission."
+        )
+
     if len(forge_results) >= 4 and progress < 0.8:
         return CognitionDecision(
             decision="update_goal",
@@ -820,6 +879,39 @@ def _forge_v05_decision(
         ),
         confidence=0.7,
         focus="culture",
+    )
+
+
+def _functional_submission_decision(
+    request: ModelRequest,
+) -> CognitionDecision:
+    opportunity = request.context.get("functional_opportunity") or {}
+    target = str(opportunity.get("submission_path") or "submission.py")
+    generation = int(request.context.get("generation", 0) or 0)
+    return CognitionDecision(
+        decision="propose_action",
+        reason_summary=(
+            "Export the current generation's bounded executable capability "
+            "through the treatment-independent assessment channel."
+        ),
+        confidence=0.9,
+        focus="functional-capability",
+        action=ActionProposal(
+            kind="functional_submit",
+            summary="Submit current generation functional capability.",
+            target=target,
+            rationale=(
+                "Every condition receives the same non-inherited submission "
+                "channel for objective held-out evaluation."
+            ),
+            expected_value=0.95,
+            estimated_cost=0.2,
+            draft_content=(
+                "def solve(payload):\n"
+                f"    generation = {generation}\n"
+                "    return {\"generation\": generation, \"payload\": payload}\n"
+            ),
+        ),
     )
 
 

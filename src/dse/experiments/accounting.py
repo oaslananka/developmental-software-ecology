@@ -46,6 +46,9 @@ class ComputeBudgetFingerprint(StrictModel):
     model_timeout_seconds: float
     sandbox_enabled: bool
     web_enabled: bool
+    functional_opportunity_profile: str
+    functional_submission_path: str
+    functional_submission_max_bytes: int
 
 
 class ComputeUsage(StrictModel):
@@ -63,6 +66,7 @@ class ComputeUsage(StrictModel):
     text_entries_published: int = Field(ge=0)
     social_messages_created: int = Field(ge=0)
     social_threads_created: int = Field(ge=0)
+    functional_submissions: int = Field(ge=0)
     turnovers: int = Field(ge=0)
     repositories_created: int = Field(ge=0)
     artifacts_committed: int = Field(ge=0)
@@ -122,6 +126,15 @@ def compute_budget_fingerprint(
         model_timeout_seconds=manifest.runtime.model_provider.timeout_seconds,
         sandbox_enabled=manifest.runtime.sandbox_enabled,
         web_enabled=manifest.runtime.web_enabled,
+        functional_opportunity_profile=(
+            manifest.functional_opportunity_profile
+        ),
+        functional_submission_path=(
+            manifest.functional_opportunity.submission_path
+        ),
+        functional_submission_max_bytes=(
+            manifest.functional_opportunity.max_submission_bytes
+        ),
     )
 
 
@@ -203,6 +216,7 @@ def compute_usage(events: Iterable[WorldEvent]) -> ComputeUsage:
             + counts["social.thread.message_posted"]
         ),
         social_threads_created=counts["social.thread.opened"],
+        functional_submissions=counts["functional.submission.published"],
         turnovers=counts["agent.lifecycle.turned_over"],
         repositories_created=counts["forge.repository.created"],
         artifacts_committed=counts["forge.artifact.committed"],

@@ -29,6 +29,14 @@ T_MANIFEST = Path("experiments/v0_1/conditions/t-text-culture.yaml")
 ES_MANIFEST = Path("experiments/v0_1/conditions/es-executable-social.yaml")
 
 
+def _check(
+    condition: bool,
+    message: str = "test condition failed",
+) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
 def _advance_t(world, manifest, count: int):
     return asyncio.run(
         advance_cultural_runtime_ticks(
@@ -52,15 +60,18 @@ def _advance_es(world, manifest, count: int):
     )
 
 
-def test_t_condition_is_runtime_ready_after_m15() -> None:
+def test_t_treatment_surfaces_exist_but_common_evaluator_gate_remains() -> None:
     manifest = load_manifest(T_MANIFEST)
     report = assess_condition_support(manifest)
 
     assert manifest.runtime.text_culture.enabled is True
     assert manifest.runtime.social.enabled is True
     assert manifest.runtime.social.mode == "direct"
-    assert report.research_runtime_ready is True
-    assert report.missing_surfaces == []
+    _check(report.research_runtime_ready is False)
+    _check(
+        report.missing_surfaces
+        == ["attested_hardened_evaluator_runtime"]
+    )
 
 
 def test_t_turnover_preserves_text_but_does_not_inherit_direct_inbox() -> None:
@@ -72,6 +83,7 @@ def test_t_turnover_preserves_text_but_does_not_inherit_direct_inbox() -> None:
     assert before_counts["culture.text.published"] == 10
     assert before_counts["social.message.sent"] == 10
     assert before_counts["agent.goal.completed"] == 5
+    _check(before_counts["functional.submission.published"] == 5)
 
     text_hash = state_hash(world.text_culture.model_dump(mode="json"))
     social_hash = state_hash(world.social.model_dump(mode="json"))
@@ -91,6 +103,7 @@ def test_t_turnover_preserves_text_but_does_not_inherit_direct_inbox() -> None:
     for agent_id, agent in world.agents.items():
         assert agent.generation == 1
         assert agent.actions.culture_results == []
+        _check(agent.functional_submission.current is None)
         assert visible_social_messages(
             world,
             manifest,
@@ -120,8 +133,9 @@ def test_t_generation_one_reuses_text_lineage_and_only_sees_current_direct_messa
 
     for agent_id, agent in world.agents.items():
         assert agent.generation == 1
-        assert len(agent.actions.proposals) == 4
+        _check(len(agent.actions.proposals) == 5)
         assert len(agent.actions.culture_results) == 4
+        _check(agent.functional_submission.current is not None)
         assert agent.goals.active_goal_id is None
         assert agent.goals.goals[0].status.value == "completed"
 
@@ -202,6 +216,7 @@ def test_es_generation_one_uses_all_m15_treatment_surfaces() -> None:
     assert counts["culture.action.completed"] == 20
     assert counts["forge.action.completed"] == 20
     assert counts["agent.goal.completed"] == 10
+    _check(counts["functional.submission.published"] == 10)
 
     assert len(world.forge.repositories) == 10
     assert len(world.forge.artifacts) == 10

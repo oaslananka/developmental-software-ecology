@@ -31,31 +31,29 @@ def build_culture_evaluation_snapshot(
     artifacts: list[EvaluationArtifactInput] = []
     total_bytes = 0
 
-    for repository in sorted(
-        world.forge.repositories.values(),
-        key=lambda item: item.repo_id,
-    ):
-        for path, artifact_id in sorted(repository.path_heads.items()):
-            artifact = world.forge.artifacts[artifact_id]
-            binding = {
-                "repo_id": repository.repo_id,
-                "repo_name": repository.name,
-                "artifact_id": artifact.artifact_id,
-                "commit_id": artifact.commit_id,
-                "path": path,
-                "content_sha256": artifact.content_sha256,
-                "content_bytes": artifact.content_bytes,
-                "creator_agent_id": artifact.creator_agent_id,
-                "creator_generation": artifact.creator_generation,
-                "parent_artifact_ids": list(artifact.parent_artifact_ids),
-            }
-            artifacts.append(
-                EvaluationArtifactInput(
-                    **binding,
-                    content=artifact.content,
-                )
+    for agent_id, agent in sorted(world.agents.items()):
+        submission = agent.functional_submission.current
+        if submission is None:
+            continue
+        binding = {
+            "repo_id": f"submission:{agent_id}",
+            "repo_name": "current-generation-submissions",
+            "artifact_id": submission.submission_id,
+            "commit_id": submission.action_id,
+            "path": submission.path,
+            "content_sha256": submission.content_sha256,
+            "content_bytes": submission.content_bytes,
+            "creator_agent_id": submission.agent_id,
+            "creator_generation": submission.generation,
+            "parent_artifact_ids": [],
+        }
+        artifacts.append(
+            EvaluationArtifactInput(
+                **binding,
+                content=submission.content,
             )
-            total_bytes += artifact.content_bytes
+        )
+        total_bytes += submission.content_bytes
 
     if len(artifacts) > config.max_snapshot_artifacts:
         raise EvaluationSnapshotLimitError(

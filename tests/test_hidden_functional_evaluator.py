@@ -39,6 +39,14 @@ E_MANIFEST = Path("experiments/v0_1/conditions/e-executable-culture.yaml")
 P_MANIFEST = Path("experiments/v0_1/conditions/p-personal.yaml")
 
 
+def _check(
+    condition: bool,
+    message: str = "test condition failed",
+) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
 class RecordingHiddenEvaluator:
     runner_kind = "test-double"
     runner_version = "m16-acceptance-double-1"
@@ -170,30 +178,35 @@ def test_primary_evaluator_config_is_separate_from_agent_runtime() -> None:
     assert len(manifest.evaluation.suite_hash or "") == 64
 
 
-def test_evaluator_snapshot_contains_only_current_public_forge_heads() -> None:
+def test_evaluator_snapshot_contains_only_current_generation_submissions() -> None:
     manifest = load_manifest(E_MANIFEST)
     world = create_world(manifest)
-    _advance_e_world(world, manifest, 100)
+    _advance_e_world(world, manifest, 120)
 
     snapshot = build_culture_evaluation_snapshot(world, manifest)
 
-    expected_heads = sum(
-        len(repository.path_heads)
-        for repository in world.forge.repositories.values()
+    expected_submissions = sum(
+        agent.functional_submission.current is not None
+        for agent in world.agents.values()
     )
-    assert len(snapshot.artifacts) == expected_heads
-    assert len(snapshot.artifacts) > 0
-    assert snapshot.world_snapshot_hash == world_state_hash(world)
+    _check(expected_submissions == 5)
+    _check(len(snapshot.artifacts) == expected_submissions)
+    _check(snapshot.world_snapshot_hash == world_state_hash(world))
 
     for artifact in snapshot.artifacts:
-        repository = world.forge.repositories[artifact.repo_id]
-        assert repository.path_heads[artifact.path] == artifact.artifact_id
+        agent = world.agents[artifact.creator_agent_id]
+        submission = agent.functional_submission.current
+        _check(submission is not None)
+        _check(artifact.repo_id == f"submission:{agent.agent_id}")
+        _check(artifact.artifact_id == submission.submission_id)
+        _check(artifact.path == submission.path)
+        _check(artifact.content == submission.content)
 
 
 def test_hidden_evaluation_is_read_only_and_sanitizes_persistable_report() -> None:
     manifest = load_manifest(E_MANIFEST)
     world = create_world(manifest)
-    _advance_e_world(world, manifest, 100)
+    _advance_e_world(world, manifest, 120)
 
     before_hash = world_state_hash(world)
     before_sequence = world.last_sequence_number
@@ -228,12 +241,15 @@ def test_hidden_evaluation_is_read_only_and_sanitizes_persistable_report() -> No
     assert "case_results" not in report_payload
     assert not hasattr(outcome.report.artifact_bindings[0], "content")
 
-    first_public_content = runner.calls[0].snapshot.artifacts[0].content
+    first_submission_content = runner.calls[0].snapshot.artifacts[0].content
     request_dict = runner.calls[0].model_dump(mode="json")
     report_dict = outcome.report.model_dump(mode="json")
-    assert request_dict["snapshot"]["artifacts"][0]["content"] == first_public_content
-    assert "content" not in report_dict["artifact_bindings"][0]
-    assert first_public_content not in report_payload
+    _check(
+        request_dict["snapshot"]["artifacts"][0]["content"]
+        == first_submission_content
+    )
+    _check("content" not in report_dict["artifact_bindings"][0])
+    _check(first_submission_content not in report_payload)
 
 
 def test_missing_attestation_fails_closed_without_calling_runner() -> None:
@@ -299,25 +315,26 @@ def test_runner_kind_mismatch_is_rejected() -> None:
     assert "runner_kind" in outcome.rejection_reasons
 
 
-def test_same_hidden_evaluator_can_score_empty_personal_public_culture() -> None:
+def test_same_hidden_evaluator_can_score_personal_current_submission() -> None:
     manifest = load_manifest(P_MANIFEST)
     world = create_world(manifest)
+    _advance_e_world(world, manifest, 120)
     runner = RecordingHiddenEvaluator()
 
     outcome = _evaluate(world, manifest, runner)
 
     assert outcome.completed is True
     assert outcome.report is not None
-    assert outcome.report.artifact_bindings == []
-    assert outcome.report.passed_cases == 0
-    assert outcome.report.failed_cases == 4
-    assert outcome.report.functional_score == 0.0
+    _check(len(outcome.report.artifact_bindings) == 5)
+    _check(outcome.report.passed_cases == 4)
+    _check(outcome.report.failed_cases == 0)
+    _check(outcome.report.functional_score == 1.0)
 
 
 def test_test_double_report_cannot_clear_e_research_runtime_gate() -> None:
     manifest = load_manifest(E_MANIFEST)
     world = create_world(manifest)
-    _advance_e_world(world, manifest, 100)
+    _advance_e_world(world, manifest, 120)
 
     report = _evaluate(
         world,
@@ -341,7 +358,7 @@ def test_test_double_report_cannot_clear_e_research_runtime_gate() -> None:
 def test_external_hardened_report_evidence_can_clear_runtime_gate() -> None:
     manifest = load_manifest(E_MANIFEST)
     world = create_world(manifest)
-    _advance_e_world(world, manifest, 100)
+    _advance_e_world(world, manifest, 120)
 
     report = _evaluate(
         world,
@@ -441,7 +458,7 @@ def test_sanitized_evaluation_report_roundtrips_through_postgres(
     register_experiment(postgres_engine, manifest)
 
     world = create_world(manifest)
-    _advance_e_world(world, manifest, 100)
+    _advance_e_world(world, manifest, 120)
     before_hash = world_state_hash(world)
 
     runner = RecordingHiddenEvaluator()
