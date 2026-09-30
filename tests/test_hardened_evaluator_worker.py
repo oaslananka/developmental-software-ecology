@@ -117,9 +117,15 @@ class RecordingBackend:
 
 
 def _bundle(manifest, *, total_cases: int = 1) -> HiddenSuiteBundle:
+    opportunity = manifest.functional_opportunity
+    if opportunity.spec_id is None or opportunity.spec_sha256 is None:
+        raise AssertionError("fixture requires functional opportunity spec")
     return HiddenSuiteBundle(
         suite_id=manifest.evaluation.suite_id,
         suite_hash=manifest.evaluation.suite_hash,
+        opportunity_spec_id=opportunity.spec_id,
+        opportunity_spec_hash=opportunity.spec_sha256,
+        opportunity_aggregation=opportunity.aggregation,
         total_cases=total_cases,
         payload=PRIVATE_SUITE_BYTES,
     )
@@ -144,11 +150,17 @@ def _worker(
 
 def _handshake_request(manifest) -> ExternalEvaluatorHandshakeRequest:
     policy = manifest.evaluation.sandbox_policy
+    opportunity = manifest.functional_opportunity
+    if opportunity.spec_id is None or opportunity.spec_sha256 is None:
+        raise AssertionError("fixture requires functional opportunity spec")
     return ExternalEvaluatorHandshakeRequest(
         request_id="m18-handshake-request",
         experiment_id=manifest.experiment.id,
         suite_id=manifest.evaluation.suite_id,
         suite_hash=manifest.evaluation.suite_hash,
+        opportunity_spec_id=opportunity.spec_id,
+        opportunity_spec_hash=opportunity.spec_sha256,
+        opportunity_aggregation=opportunity.aggregation,
         policy=policy,
         policy_hash=sandbox_policy_hash_for(policy),
     )
@@ -229,7 +241,14 @@ def test_filesystem_suite_store_hashes_private_bundle(tmp_path: Path) -> None:
     payload = b"opaque-private-suite-bytes"
     (suite_dir / "suite.bundle").write_bytes(payload)
     (suite_dir / "manifest.json").write_text(
-        json.dumps({"total_cases": 3}),
+        json.dumps(
+            {
+                "total_cases": 3,
+                "opportunity_spec_id": "fixture-spec",
+                "opportunity_spec_hash": "c" * 64,
+                "opportunity_aggregation": "population_any",
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -238,6 +257,9 @@ def test_filesystem_suite_store_hashes_private_bundle(tmp_path: Path) -> None:
     assert bundle.suite_id == suite_id
     assert bundle.suite_hash == hashlib.sha256(payload).hexdigest()
     assert bundle.total_cases == 3
+    assert bundle.opportunity_spec_id == "fixture-spec"
+    assert bundle.opportunity_spec_hash == "c" * 64
+    assert bundle.opportunity_aggregation == "population_any"
     assert bundle.payload == payload
 
 
@@ -265,9 +287,15 @@ def test_worker_rejects_handshake_policy_hash_drift() -> None:
 
 def test_worker_rejects_private_suite_hash_drift() -> None:
     manifest = load_manifest(E_MANIFEST)
+    opportunity = manifest.functional_opportunity
+    if opportunity.spec_id is None or opportunity.spec_sha256 is None:
+        raise AssertionError("fixture requires functional opportunity spec")
     mismatched = HiddenSuiteBundle(
         suite_id=manifest.evaluation.suite_id,
         suite_hash="b" * 64,
+        opportunity_spec_id=opportunity.spec_id,
+        opportunity_spec_hash=opportunity.spec_sha256,
+        opportunity_aggregation=opportunity.aggregation,
         total_cases=1,
         payload=PRIVATE_SUITE_BYTES,
     )
@@ -275,6 +303,22 @@ def test_worker_rejects_private_suite_hash_drift() -> None:
 
     with pytest.raises(EvaluatorWorkerError, match="hidden suite hash mismatch"):
         asyncio.run(worker.handshake(_handshake_request(manifest)))
+
+    assert backend.attest_calls == 0
+
+
+def test_worker_rejects_handshake_opportunity_spec_drift() -> None:
+    manifest = load_manifest(E_MANIFEST)
+    worker, backend = _worker(manifest)
+    request = _handshake_request(manifest).model_copy(
+        update={"opportunity_spec_hash": "b" * 64}
+    )
+
+    with pytest.raises(
+        EvaluatorWorkerError,
+        match="hidden suite opportunity binding mismatch",
+    ):
+        asyncio.run(worker.handshake(request))
 
     assert backend.attest_calls == 0
 
