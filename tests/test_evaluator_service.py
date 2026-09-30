@@ -122,10 +122,7 @@ def _manifest(bundle: HiddenSuiteBundle):
         }
     )
     return manifest.model_copy(
-        update={
-            "evaluation_profile": "none",
-            "evaluation": evaluation,
-        }
+        update={"evaluation": evaluation}
     )
 
 
