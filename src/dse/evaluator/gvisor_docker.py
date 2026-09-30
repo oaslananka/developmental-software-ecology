@@ -354,74 +354,108 @@ print(json.dumps({{
         self,
         policy: SandboxPolicyConfig,
     ) -> SandboxCheck:
-        name = self._name("cpu")
+        limited_name = self._name("cpu-limited")
+        control_name = self._name("cpu-control")
         quota = self._cpu_quota(policy)
-        duration = min(
-            2.0,
-            max(1.0, policy.wall_timeout_seconds / 2),
-        )
-        script = f"""
-import json
-import time
-
-duration = {duration!r}
-started_wall = time.monotonic()
-started_cpu = time.process_time()
-value = 0
-while time.monotonic() - started_wall < duration:
-    value = (value * 33 + 17) % 1000003
-wall = max(time.monotonic() - started_wall, 0.001)
-cpu = max(time.process_time() - started_cpu, 0.0)
-print(json.dumps({{"cpu_seconds": cpu, "wall_seconds": wall}}))
+        control_quota = 1.0
+        script = """
+value = 1
+for index in range(12_000_000):
+    value = (value * 33 + index) % 1000003
+print(value)
 """
-        self._create_runtime_container(
-            name,
-            policy,
-            python_args=["-I", "-B", "-c", script],
-        )
-        try:
-            result = self._run_attached(
-                name,
-                wall_timeout=min(
-                    float(policy.wall_timeout_seconds),
-                    duration + 3.0,
+        if quota >= control_quota:
+            return SandboxCheck(
+                name="cpu_limit_enforced",
+                passed=False,
+                detail=(
+                    f"quota {quota:.3f} needs a "
+                    "multi-core A/B probe"
                 ),
+            )
+
+        try:
+            self._create_runtime_container(
+                control_name,
+                policy,
+                cpu_quota=control_quota,
+                python_args=[
+                    "-I",
+                    "-B",
+                    "-c",
+                    script,
+                ],
+            )
+            control = self._run_attached(
+                control_name,
+                wall_timeout=20.0,
                 output_limit=min(
                     policy.output_bytes,
                     65_536,
                 ),
             )
-            measured = self._json_from_stdout(result)
-            observed_cores = (
-                measured["cpu_seconds"]
-                / measured["wall_seconds"]
+
+            self._create_runtime_container(
+                limited_name,
+                policy,
+                cpu_quota=quota,
+                python_args=[
+                    "-I",
+                    "-B",
+                    "-c",
+                    script,
+                ],
             )
-            tolerance = max(0.20, quota * 0.35)
-            measurable = quota < 1.0
+            limited_inspect = self._inspect_container(
+                limited_name
+            )
+            limited = self._run_attached(
+                limited_name,
+                wall_timeout=20.0,
+                output_limit=min(
+                    policy.output_bytes,
+                    65_536,
+                ),
+            )
+
+            expected_nano_cpus = round(
+                quota * 1_000_000_000
+            )
+            expected_slowdown = control_quota / quota
+            minimum_slowdown = 1.0 + (
+                (expected_slowdown - 1.0) * 0.30
+            )
+            measured_slowdown = (
+                limited.duration_ms
+                / max(control.duration_ms, 1)
+            )
             passed = (
-                measurable
-                and not result.timed_out
-                and not result.output_exceeded
-                and result.returncode == 0
-                and observed_cores <= quota + tolerance
-            )
-            detail = (
-                f"busy-loop measured {observed_cores:.3f} CPU cores "
-                f"against quota {quota:.3f}"
-                if measurable
-                else (
-                    f"quota {quota:.3f} needs a multi-core "
-                    "adversarial probe"
+                control.returncode == 0
+                and not control.timed_out
+                and not control.output_exceeded
+                and limited.returncode == 0
+                and not limited.timed_out
+                and not limited.output_exceeded
+                and limited_inspect["HostConfig"].get(
+                    "NanoCpus"
                 )
+                == expected_nano_cpus
+                and measured_slowdown >= minimum_slowdown
             )
             return SandboxCheck(
                 name="cpu_limit_enforced",
                 passed=passed,
-                detail=detail,
+                detail=(
+                    f"A/B workload slowdown "
+                    f"{measured_slowdown:.2f}x at "
+                    f"{quota:.3f} CPU quota"
+                ),
             )
         finally:
-            self._remove_container(name)
-            self._require_container_absent(name)
+            self._remove_container(control_name)
+            self._remove_container(limited_name)
+            self._require_container_absent(control_name)
+            self._require_container_absent(limited_name)
 
     def _probe_memory_limit(
         self,
@@ -776,6 +810,7 @@ time.sleep({policy.wall_timeout_seconds + 5})
         policy: SandboxPolicyConfig,
         *,
         image: str | None = None,
+        cpu_quota: float | None = None,
         python_args: list[str],
     ) -> None:
         memory = f"{policy.memory_mb}m"
@@ -796,7 +831,13 @@ time.sleep({policy.wall_timeout_seconds + 5})
             f"--pids-limit={policy.pids_max}",
             f"--memory={memory}",
             f"--memory-swap={memory}",
-            f"--cpus={self._cpu_quota(policy):.6f}",
+            (
+                f"--cpus={
+                    cpu_quota
+                    if cpu_quota is not None
+                    else self._cpu_quota(policy)
+                :.6f}"
+            ),
             "--user=65532:65532",
             "--log-driver=none",
             "--interactive",
