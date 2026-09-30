@@ -178,6 +178,9 @@ def _evaluation_request(
         artifact.model_dump(mode="json", exclude={"content"})
     )
     culture_hash = state_hash([binding.model_dump(mode="json")])
+    opportunity = manifest.functional_opportunity
+    if opportunity.spec_id is None or opportunity.spec_sha256 is None:
+        raise AssertionError("fixture requires functional opportunity spec")
     snapshot = CultureEvaluationSnapshot(
         experiment_id=manifest.experiment.id,
         condition=manifest.experiment.condition,
@@ -185,6 +188,9 @@ def _evaluation_request(
         world_sequence=11,
         world_snapshot_hash="a" * 64,
         culture_snapshot_hash=culture_hash,
+        opportunity_spec_id=opportunity.spec_id,
+        opportunity_spec_hash=opportunity.spec_sha256,
+        opportunity_aggregation=opportunity.aggregation,
         artifacts=[artifact],
     )
     plan = HiddenEvaluationPlan(
@@ -195,6 +201,9 @@ def _evaluation_request(
         world_sequence=snapshot.world_sequence,
         world_snapshot_hash=snapshot.world_snapshot_hash,
         culture_snapshot_hash=snapshot.culture_snapshot_hash,
+        opportunity_spec_id=snapshot.opportunity_spec_id,
+        opportunity_spec_hash=snapshot.opportunity_spec_hash,
+        opportunity_aggregation=snapshot.opportunity_aggregation,
         suite_id=manifest.evaluation.suite_id,
         suite_hash=manifest.evaluation.suite_hash,
         artifact_bindings=[binding],
@@ -309,6 +318,31 @@ def test_worker_revalidates_artifact_content_before_backend_execution() -> None:
     tampered = request.model_copy(update={"snapshot": snapshot})
 
     with pytest.raises(EvaluatorWorkerError, match="artifact content hash mismatch"):
+        asyncio.run(worker.evaluate(tampered))
+
+    assert backend.evaluate_calls == 0
+
+
+def test_worker_rejects_opportunity_spec_drift() -> None:
+    manifest = load_manifest(E_MANIFEST)
+    worker, backend = _worker(manifest)
+    handshake = asyncio.run(worker.handshake(_handshake_request(manifest)))
+    request = _evaluation_request(manifest, handshake.attestation)
+
+    drifted_plan = request.plan.model_copy(
+        update={"opportunity_spec_hash": "b" * 64}
+    )
+    tampered = request.model_copy(
+        update={
+            "plan": drifted_plan,
+            "plan_hash": state_hash(drifted_plan.model_dump(mode="json")),
+        }
+    )
+
+    with pytest.raises(
+        EvaluatorWorkerError,
+        match="plan/snapshot mismatch: opportunity_spec_hash",
+    ):
         asyncio.run(worker.evaluate(tampered))
 
     assert backend.evaluate_calls == 0
