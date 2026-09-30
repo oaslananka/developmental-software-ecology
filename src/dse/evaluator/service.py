@@ -4,11 +4,14 @@ import hmac
 import json
 import os
 import ssl
-from collections.abc import Mapping
+import threading
+from collections.abc import Coroutine, Mapping
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -22,6 +25,7 @@ from dse.evaluator.worker import EvaluatorWorkerError, HardenedEvaluatorWorker
 _HANDSHAKE_PATH = "/v1/handshake"
 _EVALUATE_PATH = "/v1/evaluate"
 _JSON_CONTENT_TYPE = "application/json"
+_ALLOWED_PATHS = frozenset({_HANDSHAKE_PATH, _EVALUATE_PATH})
 
 
 @dataclass(frozen=True)
@@ -77,14 +81,14 @@ class EvaluatorServiceApplication:
         self._bearer_token = bearer_token
         self.max_request_bytes = max_request_bytes
 
-    async def handle(
+    def preflight(
         self,
         *,
         method: str,
         path: str,
         headers: Mapping[str, str],
-        body: bytes,
-    ) -> EvaluatorServiceResponse:
+        content_length: int | None = None,
+    ) -> EvaluatorServiceResponse | None:
         normalized = {
             key.lower(): value
             for key, value in headers.items()
@@ -111,19 +115,13 @@ class EvaluatorServiceApplication:
                 headers=(("Allow", "POST"),),
             )
 
-        if path not in {
-            _HANDSHAKE_PATH,
-            _EVALUATE_PATH,
-        }:
+        if path not in _ALLOWED_PATHS:
             return EvaluatorServiceResponse.json(
                 HTTPStatus.NOT_FOUND,
                 {"error": "not_found"},
             )
 
-        transfer_encoding = normalized.get(
-            "transfer-encoding"
-        )
-        if transfer_encoding:
+        if normalized.get("transfer-encoding"):
             return EvaluatorServiceResponse.json(
                 HTTPStatus.BAD_REQUEST,
                 {"error": "unsupported_transfer_encoding"},
@@ -139,11 +137,32 @@ class EvaluatorServiceApplication:
                 {"error": "unsupported_media_type"},
             )
 
-        if len(body) > self.max_request_bytes:
+        if (
+            content_length is not None
+            and content_length > self.max_request_bytes
+        ):
             return EvaluatorServiceResponse.json(
                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
                 {"error": "request_too_large"},
             )
+        return None
+
+    async def handle(
+        self,
+        *,
+        method: str,
+        path: str,
+        headers: Mapping[str, str],
+        body: bytes,
+    ) -> EvaluatorServiceResponse:
+        preflight = self.preflight(
+            method=method,
+            path=path,
+            headers=headers,
+            content_length=len(body),
+        )
+        if preflight is not None:
+            return preflight
 
         try:
             payload = json.loads(body)
@@ -214,7 +233,108 @@ class EvaluatorServiceApplication:
         )
 
 
-class EvaluatorHTTPServer(HTTPServer):
+class EvaluatorAsyncRuntime:
+    """One persistent asyncio loop with bounded evaluator-operation concurrency."""
+
+    def __init__(
+        self,
+        *,
+        max_concurrent_operations: int = 1,
+        operation_timeout_seconds: float = 300.0,
+    ) -> None:
+        if max_concurrent_operations < 1:
+            raise ValueError(
+                "max_concurrent_operations must be positive"
+            )
+        if operation_timeout_seconds <= 0:
+            raise ValueError(
+                "operation_timeout_seconds must be positive"
+            )
+
+        self.max_concurrent_operations = (
+            max_concurrent_operations
+        )
+        self.operation_timeout_seconds = (
+            operation_timeout_seconds
+        )
+        self._loop = asyncio.new_event_loop()
+        self._ready = threading.Event()
+        self._closed = False
+        self._operation_slots: asyncio.Semaphore | None = None
+        self._thread = threading.Thread(
+            target=self._run_loop,
+            name="dse-evaluator-async-runtime",
+            daemon=False,
+        )
+        self._thread.start()
+        if not self._ready.wait(timeout=5.0):
+            raise RuntimeError(
+                "evaluator async runtime failed to start"
+            )
+
+    def run(
+        self,
+        coroutine: Coroutine[Any, Any, EvaluatorServiceResponse],
+    ) -> EvaluatorServiceResponse:
+        if self._closed:
+            coroutine.close()
+            raise RuntimeError(
+                "evaluator async runtime is closed"
+            )
+        future = asyncio.run_coroutine_threadsafe(
+            self._bounded(coroutine),
+            self._loop,
+        )
+        try:
+            return future.result(
+                timeout=self.operation_timeout_seconds
+            )
+        except FutureTimeoutError:
+            future.cancel()
+            raise
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._loop.call_soon_threadsafe(
+            self._loop.stop
+        )
+        self._thread.join(timeout=5.0)
+        if self._thread.is_alive():
+            raise RuntimeError(
+                "evaluator async runtime failed to stop"
+            )
+        self._loop.close()
+
+    def _run_loop(self) -> None:
+        asyncio.set_event_loop(self._loop)
+        self._operation_slots = asyncio.Semaphore(
+            self.max_concurrent_operations
+        )
+        self._ready.set()
+        self._loop.run_forever()
+
+    async def _bounded(
+        self,
+        coroutine: Coroutine[Any, Any, EvaluatorServiceResponse],
+    ) -> EvaluatorServiceResponse:
+        slots = self._operation_slots
+        if slots is None:
+            coroutine.close()
+            raise RuntimeError(
+                "evaluator async runtime is not ready"
+            )
+        async with slots:
+            return await coroutine
+
+
+class EvaluatorHTTPServer(ThreadingHTTPServer):
+    """Threaded ingress with explicit connection and worker-operation bounds."""
+
+    daemon_threads = False
+    block_on_close = True
+
     def __init__(
         self,
         server_address: tuple[str, int],
@@ -222,19 +342,38 @@ class EvaluatorHTTPServer(HTTPServer):
         *,
         application: EvaluatorServiceApplication,
         request_timeout_seconds: float,
+        max_connections: int,
+        max_concurrent_operations: int,
+        operation_timeout_seconds: float,
     ) -> None:
         if request_timeout_seconds <= 0:
             raise ValueError(
                 "request_timeout_seconds must be positive"
             )
+        if max_connections < 1:
+            raise ValueError(
+                "max_connections must be positive"
+            )
         self.application = application
         self.request_timeout_seconds = (
             request_timeout_seconds
         )
-        super().__init__(
-            server_address,
-            handler_class,
+        self.max_connections = max_connections
+        self._connection_slots = threading.BoundedSemaphore(
+            max_connections
         )
+        self.async_runtime = EvaluatorAsyncRuntime(
+            max_concurrent_operations=max_concurrent_operations,
+            operation_timeout_seconds=operation_timeout_seconds,
+        )
+        try:
+            super().__init__(
+                server_address,
+                handler_class,
+            )
+        except Exception:
+            self.async_runtime.close()
+            raise
 
     def get_request(self):
         connection, address = super().get_request()
@@ -242,6 +381,45 @@ class EvaluatorHTTPServer(HTTPServer):
             self.request_timeout_seconds
         )
         return connection, address
+
+    def process_request(
+        self,
+        request,
+        client_address,
+    ) -> None:
+        acquired = self._connection_slots.acquire(
+            timeout=self.request_timeout_seconds
+        )
+        if not acquired:
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(
+                request,
+                client_address,
+            )
+        except Exception:
+            self._connection_slots.release()
+            raise
+
+    def process_request_thread(
+        self,
+        request,
+        client_address,
+    ) -> None:
+        try:
+            super().process_request_thread(
+                request,
+                client_address,
+            )
+        finally:
+            self._connection_slots.release()
+
+    def server_close(self) -> None:
+        try:
+            super().server_close()
+        finally:
+            self.async_runtime.close()
 
 
 class EvaluatorRequestHandler(BaseHTTPRequestHandler):
@@ -276,129 +454,109 @@ class EvaluatorRequestHandler(BaseHTTPRequestHandler):
             key: value
             for key, value in self.headers.items()
         }
-
-        if not server.application._authorized(
-            self.headers.get("Authorization")
-        ):
-            response = EvaluatorServiceResponse.json(
-                HTTPStatus.UNAUTHORIZED,
-                {"error": "unauthorized"},
-                headers=(
-                    (
-                        "WWW-Authenticate",
-                        'Bearer realm="dse-evaluator"',
-                    ),
-                ),
-            )
-            self.close_connection = True
-            self._write_response(response)
-            return
-
-        if self.command != "POST":
-            response = EvaluatorServiceResponse.json(
-                HTTPStatus.METHOD_NOT_ALLOWED,
-                {"error": "method_not_allowed"},
-                headers=(("Allow", "POST"),),
-            )
-            self.close_connection = True
-            self._write_response(response)
-            return
-
-        if self.path not in {
-            _HANDSHAKE_PATH,
-            _EVALUATE_PATH,
-        }:
-            response = EvaluatorServiceResponse.json(
-                HTTPStatus.NOT_FOUND,
-                {"error": "not_found"},
-            )
-            self.close_connection = True
-            self._write_response(response)
-            return
-
-        if self.headers.get("Transfer-Encoding"):
-            response = EvaluatorServiceResponse.json(
-                HTTPStatus.BAD_REQUEST,
-                {"error": "unsupported_transfer_encoding"},
-            )
-            self.close_connection = True
-            self._write_response(response)
-            return
-
         length_value = self.headers.get(
             "Content-Length"
         )
-        if length_value is None:
-            response = EvaluatorServiceResponse.json(
-                HTTPStatus.LENGTH_REQUIRED,
-                {"error": "content_length_required"},
-            )
-            self.close_connection = True
-            self._write_response(response)
+        content_length: int | None = None
+
+        if self.command == "POST":
+            if length_value is None:
+                self._finish(
+                    EvaluatorServiceResponse.json(
+                        HTTPStatus.LENGTH_REQUIRED,
+                        {
+                            "error": (
+                                "content_length_required"
+                            )
+                        },
+                    )
+                )
+                return
+            try:
+                content_length = int(length_value)
+            except ValueError:
+                self._finish(
+                    EvaluatorServiceResponse.json(
+                        HTTPStatus.BAD_REQUEST,
+                        {
+                            "error": (
+                                "invalid_content_length"
+                            )
+                        },
+                    )
+                )
+                return
+            if content_length < 0:
+                self._finish(
+                    EvaluatorServiceResponse.json(
+                        HTTPStatus.BAD_REQUEST,
+                        {
+                            "error": (
+                                "invalid_content_length"
+                            )
+                        },
+                    )
+                )
+                return
+
+        preflight = server.application.preflight(
+            method=self.command,
+            path=self.path,
+            headers=headers,
+            content_length=content_length,
+        )
+        if preflight is not None:
+            self._finish(preflight)
             return
 
-        try:
-            content_length = int(length_value)
-        except ValueError:
-            response = EvaluatorServiceResponse.json(
-                HTTPStatus.BAD_REQUEST,
-                {"error": "invalid_content_length"},
-            )
-            self.close_connection = True
-            self._write_response(response)
-            return
-
-        if content_length < 0:
-            response = EvaluatorServiceResponse.json(
-                HTTPStatus.BAD_REQUEST,
-                {"error": "invalid_content_length"},
-            )
-            self.close_connection = True
-            self._write_response(response)
-            return
-
-        if (
-            content_length
-            > server.application.max_request_bytes
-        ):
-            response = EvaluatorServiceResponse.json(
-                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                {"error": "request_too_large"},
-            )
-            self.close_connection = True
-            self._write_response(response)
-            return
-
+        assert content_length is not None
         try:
             body = self.rfile.read(
                 content_length
             )
         except (TimeoutError, OSError):
-            self.close_connection = True
-            response = EvaluatorServiceResponse.json(
-                HTTPStatus.REQUEST_TIMEOUT,
-                {"error": "request_timeout"},
+            self._finish(
+                EvaluatorServiceResponse.json(
+                    HTTPStatus.REQUEST_TIMEOUT,
+                    {"error": "request_timeout"},
+                )
             )
-            self._write_response(response)
             return
 
         if len(body) != content_length:
-            self.close_connection = True
-            response = EvaluatorServiceResponse.json(
-                HTTPStatus.BAD_REQUEST,
-                {"error": "incomplete_body"},
+            self._finish(
+                EvaluatorServiceResponse.json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "incomplete_body"},
+                )
             )
-            self._write_response(response)
             return
 
-        response = asyncio.run(
-            server.application.handle(
-                method=self.command,
-                path=self.path,
-                headers=headers,
-                body=body,
+        try:
+            response = server.async_runtime.run(
+                server.application.handle(
+                    method=self.command,
+                    path=self.path,
+                    headers=headers,
+                    body=body,
+                )
             )
-        )
+        except FutureTimeoutError:
+            response = EvaluatorServiceResponse.json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {"error": "evaluator_timeout"},
+            )
+        except RuntimeError:
+            response = EvaluatorServiceResponse.json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {"error": "evaluator_unavailable"},
+            )
+        self._finish(response)
+
+    def _finish(
+        self,
+        response: EvaluatorServiceResponse,
+    ) -> None:
         self.close_connection = True
         self._write_response(response)
 
@@ -425,7 +583,7 @@ class EvaluatorRequestHandler(BaseHTTPRequestHandler):
 
     def log_message(
         self,
-        format: str,
+        log_format: str,
         *args,
     ) -> None:
         return
@@ -447,6 +605,9 @@ class EvaluatorServiceConfig:
     )
     max_request_bytes: int = 2_097_152
     request_timeout_seconds: float = 30.0
+    max_connections: int = 16
+    max_concurrent_operations: int = 1
+    operation_timeout_seconds: float = 300.0
 
     @classmethod
     def from_env(
@@ -502,6 +663,24 @@ class EvaluatorServiceConfig:
                 minimum=1.0,
                 maximum=300.0,
             ),
+            max_connections=_env_int(
+                "DSE_EVALUATOR_MAX_CONNECTIONS",
+                16,
+                minimum=1,
+                maximum=128,
+            ),
+            max_concurrent_operations=_env_int(
+                "DSE_EVALUATOR_MAX_CONCURRENT_OPERATIONS",
+                1,
+                minimum=1,
+                maximum=8,
+            ),
+            operation_timeout_seconds=_env_float(
+                "DSE_EVALUATOR_OPERATION_TIMEOUT_SECONDS",
+                300.0,
+                minimum=1.0,
+                maximum=900.0,
+            ),
         )
 
 
@@ -539,6 +718,13 @@ def serve_https(
         application=application,
         request_timeout_seconds=(
             config.request_timeout_seconds
+        ),
+        max_connections=config.max_connections,
+        max_concurrent_operations=(
+            config.max_concurrent_operations
+        ),
+        operation_timeout_seconds=(
+            config.operation_timeout_seconds
         ),
     )
     context = ssl.SSLContext(
