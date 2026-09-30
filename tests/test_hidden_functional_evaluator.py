@@ -382,6 +382,7 @@ def test_production_evaluator_package_has_only_approved_execution_backend() -> N
         "base.py",
         "gvisor_docker.py",
         "http.py",
+        "service.py",
         "suite_store.py",
         "worker.py",
     ]
@@ -390,6 +391,7 @@ def test_production_evaluator_package_has_only_approved_execution_backend() -> N
         Path("src/dse/engine/hidden_evaluator.py"),
         Path("src/dse/evaluator/base.py"),
         Path("src/dse/evaluator/http.py"),
+        Path("src/dse/evaluator/service.py"),
         Path("src/dse/evaluator/suite_store.py"),
         Path("src/dse/evaluator/worker.py"),
     ]
