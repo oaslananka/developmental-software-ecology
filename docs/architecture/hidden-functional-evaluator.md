@@ -4,11 +4,13 @@ M16 implements the measurement plane required by the V0.1 research design.
 
 The evaluator is deliberately separate from the agent world.
 
-Its purpose is to answer:
+Its original M16 purpose was to answer what objectively executable capability
+exists in public culture without revealing held-out cases.
 
-> What objectively executable capability exists in the public culture at this snapshot?
-
-without telling agents which capabilities are being tested.
+M19 refines the causal measurement boundary: the same hidden evaluator now
+scores a treatment-independent **current-generation functional submission**.
+Persistent culture may help an agent construct that submission, but executable
+Forge access is no longer itself the evaluator input.
 
 ## Non-negotiable boundary
 
@@ -48,26 +50,42 @@ agent compute budget by condition.
 
 ## Evaluation snapshot
 
-The evaluator reads a copy of the public Forge state.
+As of M19, the evaluator reads only current-generation functional submissions.
 
-Only current repository path heads enter the evaluation snapshot.
+Each agent slot may expose one bounded submission through the same public
+opportunity profile. The submission is deleted on turnover and must be
+re-created by the replacement generation.
 
-The runner receives public artifact content because it must stage the current software culture, but the persisted report contains only sanitized bindings:
+The existing evaluation artifact schema is retained for wire/storage
+compatibility. A submission is mapped to a sanitized artifact binding with:
 
-- repo ID/name,
-- artifact ID,
-- commit ID,
-- path,
-- content SHA-256,
-- content byte count,
-- creator agent/generation,
-- parent artifact IDs.
+- synthetic submission repo ID/name;
+- submission ID as artifact ID;
+- source action ID as commit ID;
+- canonical submission path;
+- content SHA-256;
+- content byte count;
+- creator agent/generation;
+- no cultural parent-artifact IDs.
 
-The culture snapshot hash is computed from those bindings. The separate world snapshot hash binds the evaluation to one exact world state.
+The runner receives submission content because it must execute the current
+candidate against private held-out cases. The persisted report contains only
+the sanitized bindings above.
+
+Persistent Forge/text/social state is **not** copied directly into this
+evaluation payload. Those treatment-specific substrates can only affect the
+score indirectly through what the current generation produces.
+
+The historical field name `culture_snapshot_hash` remains in the M16-M18
+wire contract for compatibility; after M19 it hashes the current evaluation
+submission bindings. The separate world snapshot hash still binds evaluation
+to one exact world state.
 
 ## Hidden suite privacy
 
-The runner request contains suite ID/hash, the public culture snapshot, sandbox policy/hash, and attestation/backend binding. It does not contain hidden test source.
+The runner request contains suite ID/hash, the bounded current-generation
+submission snapshot, sandbox policy/hash, and attestation/backend binding. It
+does not contain hidden test source.
 
 A real external evaluator backend is expected to hold the hidden suite privately and verify that its local suite bytes match the pinned suite hash.
 
@@ -117,11 +135,16 @@ The worker returns only aggregate counts:
 - total cases,
 - duration.
 
-The primary score is:
+The persisted scalar remains:
 
 ```text
-Functional Culture Score = passed_cases / total_cases
+functional_score = passed_cases / total_cases
 ```
+
+After M19, interpret this as current-generation executable capability under the
+common submission contract. Cultural accumulation is inferred from
+cross-treatment and across-turnover trajectories, not from the mere presence
+of Forge artifacts.
 
 No LLM judge is required.
 
@@ -170,11 +193,13 @@ M16 separates two questions:
 1. Is the evaluator contract implemented/configured?
 2. Did this run actually produce evidence from an attested external-hardened evaluator?
 
-After M16, E/ES static support should no longer report that the hidden evaluator is absent. Instead they remain gated by:
+After M19, **all five** strict P/T/E/ES/RIL conditions remain gated by:
 
 ```text
 attested_hardened_evaluator_runtime
 ```
+
+because the common functional outcome is required for every treatment.
 
 A `test-double` result cannot clear this gate.
 
@@ -182,8 +207,9 @@ Only a matching `external-hardened` result bound to the configured suite and pol
 
 ## Scientific boundary
 
-M16 proves the evaluation protocol, isolation contract, sanitized persistence and readiness gate.
+M16 proves the evaluation protocol, isolation contract and sanitized
+persistence. M19 corrects the cross-condition measurement substrate.
 
-It does not prove that deterministic M12-M15 fixtures have useful executable capability.
-
-That requires actual hidden functional tests against real agent-produced software in replicated experiment runs.
+Neither milestone proves that deterministic fixtures have useful executable
+capability. The substantive public problem family and real private held-out
+suite still have to be frozen and accepted before replicated experiment runs.
