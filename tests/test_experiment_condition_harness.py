@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -111,8 +112,33 @@ def test_all_primary_condition_manifests_share_compute_budget() -> None:
             == "v0_1-functional-submission"
         )
         _check(manifest.functional_opportunity.enabled is True)
-        _check(manifest.functional_opportunity.submission_path == "submission.py")
-        _check(manifest.functional_opportunity.entrypoint == "solve")
+        opportunity = manifest.functional_opportunity
+        _check(opportunity.submission_path == "submission.py")
+        _check(opportunity.entrypoint == "solve")
+        _check(opportunity.max_submission_bytes == 4000)
+        _check(opportunity.spec_id == "dse-utility-kernel-v0.1")
+        _check(
+            opportunity.spec_sha256
+            == "7284687308bd4dbdef7a7558349bbdd9718a6f788b155fb6d77634731e6f3967"
+        )
+        _check(opportunity.aggregation == "population_any")
+        _check(
+            hashlib.sha256(
+                opportunity.public_brief.encode("utf-8")
+            ).hexdigest()
+            == opportunity.spec_sha256
+        )
+        for task in (
+            "stable_unique",
+            "range_pack",
+            "bucket_total",
+            "rank_select",
+            "dependency_layers",
+            "route_min",
+            "counter_patch",
+            "window_sum",
+        ):
+            _check(task in opportunity.public_brief)
 
 
 def test_condition_contract_rejects_treatment_drift() -> None:
