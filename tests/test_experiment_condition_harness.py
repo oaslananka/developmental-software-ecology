@@ -208,18 +208,24 @@ def test_support_gate_reports_missing_runtime_surfaces_without_theater() -> None
         for condition, manifest in manifests.items()
     }
 
-    assert reports["P"].research_runtime_ready is True
-    assert reports["P"].missing_surfaces == []
+    assert reports["P"].research_runtime_ready is False
+    assert reports["P"].missing_surfaces == [
+        "attested_hardened_evaluator_runtime",
+    ]
     assert any(
         "limited communication" in note
         for note in reports["P"].notes
     )
 
-    assert reports["RIL"].research_runtime_ready is True
-    assert reports["RIL"].missing_surfaces == []
+    assert reports["RIL"].research_runtime_ready is False
+    assert reports["RIL"].missing_surfaces == [
+        "attested_hardened_evaluator_runtime",
+    ]
 
-    assert reports["T"].research_runtime_ready is True
-    assert reports["T"].missing_surfaces == []
+    assert reports["T"].research_runtime_ready is False
+    assert reports["T"].missing_surfaces == [
+        "attested_hardened_evaluator_runtime",
+    ]
 
     assert reports["E"].research_runtime_ready is False
     assert reports["E"].missing_surfaces == [
@@ -244,11 +250,11 @@ def test_harness_reports_full_matrix_but_does_not_claim_false_readiness() -> Non
         item.condition: item
         for item in report.support
     }
-    assert support["P"].research_runtime_ready is True
-    assert support["RIL"].research_runtime_ready is True
+    assert support["P"].research_runtime_ready is False
+    assert support["RIL"].research_runtime_ready is False
     assert support["E"].research_runtime_ready is False
     assert support["ES"].research_runtime_ready is False
-    assert support["T"].research_runtime_ready is True
+    assert support["T"].research_runtime_ready is False
 
 
 def test_compute_budget_drift_is_rejected_even_if_treatment_is_valid() -> None:
