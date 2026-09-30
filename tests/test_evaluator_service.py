@@ -35,6 +35,14 @@ RUNTIME_BUILD = "2" * 64
 SUITE_PAYLOAD = b"M18_3_PUBLIC_SERVICE_FIXTURE"
 
 
+def _check(
+    condition: bool,
+    message: str = "test condition failed",
+) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
 class MemorySuiteStore:
     def __init__(self, bundle: HiddenSuiteBundle) -> None:
         self.bundle = bundle
