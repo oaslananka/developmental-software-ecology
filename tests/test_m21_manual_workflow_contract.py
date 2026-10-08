@@ -17,7 +17,7 @@ class TestM21ManualWorkflowContract(unittest.TestCase):
         self.assertEqual(len(workflow["jobs"]), 1)
         job = workflow["jobs"]["public-tls-gvisor-preflight"]
         self.assertEqual(job["runs-on"], "ubuntu-24.04")
-        self.assertEqual(job["timeout-minutes"], "35")
+        self.assertEqual(job["timeout-minutes"], 35)
         self.assertEqual(job["env"]["DSE_M21_MANUAL_PROBE"], "1")
         self.assertIn(
             "github.actor_id != '285490571'",
