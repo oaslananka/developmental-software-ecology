@@ -10,9 +10,9 @@ class TestM21ManualWorkflowContract(unittest.TestCase):
     def test_manual_preflight_has_no_background_or_secret_authority(self) -> None:
         path = Path(".github/workflows/m21-manual-runtime.yml")
         content = path.read_text(encoding="utf-8")
-        # BaseLoader preserves the YAML "on" key as a literal string.
-        workflow = yaml.load(content, Loader=yaml.BaseLoader)
-        self.assertEqual(set(workflow["on"]), {"workflow_dispatch"})
+        # PyYAML YAML 1.1 can parse "on" as True; both forms are checked.
+        workflow = yaml.safe_load(content)
+        self.assertEqual(set(workflow.get("on", workflow.get(True))), {"workflow_dispatch"})
         self.assertEqual(workflow["permissions"], {"contents": "read"})
         self.assertEqual(len(workflow["jobs"]), 1)
         job = workflow["jobs"]["public-tls-gvisor-preflight"]
