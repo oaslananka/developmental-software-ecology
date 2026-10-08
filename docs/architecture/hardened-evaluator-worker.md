@@ -71,13 +71,18 @@ public Forge.
 The store:
 
 - restricts suite IDs to a safe single path component,
-- prevents path escape,
+- prevents path escape and rejects suite-directory or leaf-file symlinks,
+- reads both leaves relative to opened directories with `O_NOFOLLOW`,
+- rejects nonregular entries (including FIFOs) before reading,
 - reads the opaque bundle bytes,
 - computes SHA-256 from the exact bytes,
 - reads only aggregate metadata such as `total_cases`.
 
 The worker compares that SHA-256 against the manifest-pinned suite hash before
-opening a session.
+opening a session. The private suite root and its parent directories must still
+be operator-controlled and protected against unauthorized replacement; this
+store hardening does not establish a qualified private gVisor host or M21
+scientific acceptance.
 
 ## Independent worker-side validation
 

@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -277,6 +278,64 @@ def test_filesystem_suite_store_rejects_unsafe_suite_ids(
     suite_id: str,
 ) -> None:
     with pytest.raises(HiddenSuiteError, match="invalid hidden suite id"):
+        FilesystemHiddenSuiteStore(tmp_path).load(suite_id)
+
+
+def _write_public_suite_files(suite_dir: Path) -> None:
+    suite_dir.mkdir()
+    (suite_dir / "suite.bundle").write_bytes(b"synthetic suite input")
+    (suite_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "total_cases": 1,
+                "opportunity_spec_id": "fixture-spec",
+                "opportunity_spec_hash": "c" * 64,
+                "opportunity_aggregation": "population_any",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.parametrize("leaf", ["suite.bundle", "manifest.json"])
+def test_filesystem_suite_store_rejects_leaf_symlinks(
+    tmp_path: Path, leaf: str
+) -> None:
+    suite_id = "public-symlink-fixture"
+    suite_dir = tmp_path / suite_id
+    _write_public_suite_files(suite_dir)
+
+    outside = tmp_path / "external-synthetic-data"
+    outside.write_bytes((suite_dir / leaf).read_bytes())
+    (suite_dir / leaf).unlink()
+    (suite_dir / leaf).symlink_to(outside)
+
+    with pytest.raises(HiddenSuiteError, match="unable to load hidden suite"):
+        FilesystemHiddenSuiteStore(tmp_path).load(suite_id)
+
+
+def test_filesystem_suite_store_rejects_directory_symlink(
+    tmp_path: Path,
+) -> None:
+    suite_id = "public-directory-symlink"
+    external = tmp_path / "external-public-fixture"
+    _write_public_suite_files(external)
+    (tmp_path / suite_id).symlink_to(external, target_is_directory=True)
+
+    with pytest.raises(HiddenSuiteError, match="unable to load hidden suite"):
+        FilesystemHiddenSuiteStore(tmp_path).load(suite_id)
+
+
+def test_filesystem_suite_store_rejects_nonregular_fifo(
+    tmp_path: Path,
+) -> None:
+    suite_id = "public-fifo-fixture"
+    suite_dir = tmp_path / suite_id
+    _write_public_suite_files(suite_dir)
+    (suite_dir / "suite.bundle").unlink()
+    os.mkfifo(suite_dir / "suite.bundle", mode=0o600)
+
+    with pytest.raises(HiddenSuiteError, match="not a regular file"):
         FilesystemHiddenSuiteStore(tmp_path).load(suite_id)
 
 

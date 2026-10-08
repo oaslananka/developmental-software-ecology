@@ -1,6 +1,9 @@
 import hashlib
 import json
+import os
 import re
+import stat
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -40,17 +43,29 @@ class FilesystemHiddenSuiteStore:
         if not _SUITE_ID.fullmatch(suite_id):
             raise HiddenSuiteError("invalid hidden suite id")
 
-        suite_dir = (self._root / suite_id).resolve()
-        if suite_dir.parent != self._root:
-            raise HiddenSuiteError("hidden suite path escaped configured root")
-
-        bundle_path = suite_dir / "suite.bundle"
-        metadata_path = suite_dir / "manifest.json"
-
+        # Never resolve user-controlled suite entries via Path: open the
+        # directory and both leaves relative to already-open descriptors.
+        # O_NOFOLLOW rejects symlink substitution on every checked component.
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
         try:
-            payload = bundle_path.read_bytes()
-            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as error:
+            with ExitStack() as stack:
+                root_fd = os.open(
+                    self._root, flags | os.O_DIRECTORY
+                )
+                stack.callback(os.close, root_fd)
+                suite_fd = os.open(
+                    suite_id,
+                    flags | os.O_DIRECTORY,
+                    dir_fd=root_fd,
+                )
+                stack.callback(os.close, suite_fd)
+
+                payload = self._read_regular_file(suite_fd, "suite.bundle")
+                manifest_bytes = self._read_regular_file(
+                    suite_fd, "manifest.json"
+                )
+                metadata = json.loads(manifest_bytes.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise HiddenSuiteError(
                 f"unable to load hidden suite {suite_id!r}"
             ) from error
@@ -100,3 +115,16 @@ class FilesystemHiddenSuiteStore:
             total_cases=total_cases,
             payload=payload,
         )
+
+    @staticmethod
+    def _read_regular_file(suite_fd: int, name: str) -> bytes:
+        # O_NONBLOCK keeps a malicious FIFO from hanging before fstat can
+        # reject it. Regular files ignore this flag.
+        flags = (
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+        )
+        descriptor = os.open(name, flags, dir_fd=suite_fd)
+        with os.fdopen(descriptor, "rb") as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise HiddenSuiteError("hidden suite entry is not a regular file")
+            return stream.read()
