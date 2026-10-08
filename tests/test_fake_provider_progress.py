@@ -1,8 +1,7 @@
 """Regression coverage for v0.4 deterministic fake zero-progress decisions."""
 
 import asyncio
-
-import pytest
+import unittest
 
 from dse.contracts.model import ModelRequest
 from dse.providers.fake import DeterministicFakeProvider
@@ -24,20 +23,20 @@ def _decision_at_progress(progress: float | None):
     return asyncio.run(DeterministicFakeProvider().generate(request)).decision
 
 
-@pytest.mark.parametrize("zero", [0.0, -0.0])
-def test_exact_zero_progress_proposes_workspace_inspection(zero: float) -> None:
-    decision = _decision_at_progress(zero)
-    assert decision.decision == "propose_action"
-    assert decision.action is not None
-    assert decision.action.kind == "inspect_workspace"
+class TestFakeProviderProgress(unittest.TestCase):
+    def test_exact_zero_progress_proposes_workspace_inspection(self) -> None:
+        for zero in (0.0, -0.0):
+            with self.subTest(progress=zero):
+                decision = _decision_at_progress(zero)
+                self.assertEqual(decision.decision, "propose_action")
+                self.assertIsNotNone(decision.action)
+                self.assertEqual(decision.action.kind, "inspect_workspace")
 
+    def test_small_positive_progress_bypasses_zero_progress_action(self) -> None:
+        decision = _decision_at_progress(1e-7)
+        self.assertEqual(decision.decision, "update_goal")
+        self.assertIsNone(decision.action)
 
-def test_small_positive_progress_does_not_trigger_zero_progress_action() -> None:
-    decision = _decision_at_progress(1e-7)
-    assert decision.decision == "update_goal"
-    assert decision.action is None
-
-
-def test_explicit_null_progress_is_not_silently_treated_as_zero() -> None:
-    with pytest.raises(TypeError):
-        _decision_at_progress(None)
+    def test_explicit_null_progress_is_not_coerced_to_zero(self) -> None:
+        with self.assertRaises(TypeError):
+            _decision_at_progress(None)
