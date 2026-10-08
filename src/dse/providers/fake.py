@@ -80,7 +80,7 @@ class DeterministicFakeProvider:
             request.response_schema == "CognitionDecision/v0.4"
             and action_generation_enabled
             and active_goal is not None
-            and float(active_goal.get("progress", 0.0)) == 0.0
+            and not float(active_goal.get("progress", 0.0))
             and action_budget >= inspect_budget_floor
         ):
             decision = CognitionDecision(
@@ -105,7 +105,7 @@ class DeterministicFakeProvider:
             request.response_schema == "CognitionDecision/v0.4"
             and action_generation_enabled
             and active_goal is not None
-            and float(active_goal.get("progress", 0.0)) == 0.0
+            and not float(active_goal.get("progress", 0.0))
             and action_budget == draft_budget
         ):
             decision = CognitionDecision(
