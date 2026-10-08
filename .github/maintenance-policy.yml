@@ -1,0 +1,9 @@
+# Trusted oc-main maintenance classification policy, pinned to the PR API base.sha.
+# Names below are observed GitHub Actions check-run names required by main-standard.
+# This is not a scientific evaluator readiness or merge authorization signal.
+version: 1
+required_checks:
+  inherit_from_github: true
+  names:
+    - test
+    - gvisor-runtime-probe
