@@ -134,7 +134,7 @@ class TestManualPublicTlsGvisor(unittest.TestCase):
         try:
             await asyncio.sleep(0.25)
             async with httpx.AsyncClient(
-                verify=str(cert),
+                verify=ssl.create_default_context(cafile=str(cert)),
                 timeout=180.0,
                 follow_redirects=False,
             ) as transport:
