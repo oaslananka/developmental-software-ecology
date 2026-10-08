@@ -1,0 +1,70 @@
+# Operator-triggered, public-only isolation proof. Never load M21 hidden suite here.
+name: M21 manual gVisor TLS public preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dse-m21-manual-gvisor-public
+  cancel-in-progress: false
+
+jobs:
+  public-tls-gvisor-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      DSE_M21_MANUAL_PROBE: "1"
+      DSE_SECRET_CANARY: "public-synthetic-gvisor-canary"
+      DSE_GVISOR_RUNTIME_IMAGE: "gcr.io/distroless/python3-debian13:nonroot"
+    steps:
+      - name: Reject non-owner or non-main dispatch
+        if: github.ref != 'refs/heads/main' || github.actor_id != '285490571'
+        run: |
+          echo 'Only the authorized owner on the protected main branch may run this preflight.' >&2
+          exit 1
+      - name: Checkout protected main commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install hash-locked dependencies
+        run: >-
+          python -m pip install --only-binary=:all: --require-hashes
+          --requirement requirements-ci.txt
+      - name: Install real gVisor runsc Docker runtime
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
+          curl --fail --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' \
+            https://gvisor.dev/archive.key | \
+            sudo gpg --dearmor --yes -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | \
+            sudo tee /etc/apt/sources.list.d/gvisor.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y runsc
+          sudo systemctl restart docker
+          if ! docker info --format '{{json .Runtimes}}' | grep -q '"runsc"'; then
+            sudo runsc install
+            sudo systemctl restart docker
+          fi
+          python -c 'import json,subprocess; data=json.loads(subprocess.check_output(["docker","info","--format","{{json .Runtimes}}"])); assert "runsc" in data, "gVisor runsc Docker runtime is unavailable"'
+          runsc --version
+          sha256sum "$(command -v runsc)"
+      - name: Pull public distroless isolation image
+        run: docker pull "$DSE_GVISOR_RUNTIME_IMAGE"
+      - name: Exercise real TLS, filesystem suite store, worker and gVisor with a public one-case fixture
+        run: python -m pytest -q tests/test_m21_manual_tls_gvisor.py
+      - name: Clarify scientific boundary
+        if: success()
+        run: |
+          echo 'Public synthetic TLS + gVisor integration passed.'
+          echo 'M21 private frozen 64-case suite remains untested and scientifically unaccepted.'
