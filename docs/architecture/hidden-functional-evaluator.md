@@ -111,6 +111,13 @@ does not contain hidden test source.
 
 A real external evaluator backend is expected to hold the hidden suite privately and verify that its local suite bytes match the pinned suite hash.
 
+M21 freezes the first M20-bound private suite under
+`v0_1-hidden-functional-suite-m20-v1`. Only its identity/hash, total case
+count and opportunity binding are public; see
+`docs/research/v0.1-private-suite-freeze.md`. The earlier M16 pin is
+superseded rather than relabeled because its original private bytes were not
+recovered.
+
 M16's CI runner double is only an acceptance fixture and cannot satisfy the research-runtime gate.
 
 ## Reuse of M9/M10 sandbox protocol

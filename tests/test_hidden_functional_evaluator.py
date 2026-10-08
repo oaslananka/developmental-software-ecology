@@ -175,8 +175,11 @@ def test_primary_evaluator_config_is_separate_from_agent_runtime() -> None:
     assert manifest.evaluation.enabled is True
     assert manifest.evaluation.sandbox_enabled is True
     assert manifest.evaluation.sandbox_policy.backend == "external-hardened"
-    assert manifest.evaluation.suite_id == "v0_1-hidden-functional-suite"
-    assert len(manifest.evaluation.suite_hash or "") == 64
+    assert manifest.evaluation.suite_id == "v0_1-hidden-functional-suite-m20-v1"
+    assert (
+        manifest.evaluation.suite_hash
+        == "a869623be48e27c4fa39563596c703f1308f0b1a9a9a41c12fdf4a36c28146b1"
+    )
     opportunity = manifest.functional_opportunity
     _check(opportunity.spec_id == "dse-utility-kernel-v0.1")
     _check(
