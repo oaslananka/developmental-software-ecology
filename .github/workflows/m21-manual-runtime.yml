@@ -67,11 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 1 \\
-            -keyout "$DSE_M21_TLS_KEY" -out "$DSE_M21_TLS_CERT" \\
-            -subj "/CN=localhost" \\
-            -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \\
-            -addext "basicConstraints=critical,CA:TRUE"
+          openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 1 -keyout "$DSE_M21_TLS_KEY" -out "$DSE_M21_TLS_CERT" -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" -addext "basicConstraints=critical,CA:TRUE"
       - name: Exercise real TLS, filesystem suite store, worker and gVisor with a public one-case fixture
         run: python -m pytest -q tests/test_m21_manual_tls_gvisor.py
       - name: Clarify scientific boundary
