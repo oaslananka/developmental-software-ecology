@@ -13,7 +13,6 @@ from pathlib import Path
 import secrets
 import socket
 import ssl
-import subprocess
 import tempfile
 import unittest
 
@@ -80,21 +79,9 @@ class TestManualPublicTlsGvisor(unittest.TestCase):
             encoding="utf-8",
         )
 
-        cert = root / "public-local-tls-cert.pem"
-        key = root / "public-local-tls-key.pem"
-        subprocess.run(
-            [
-                "openssl", "req", "-x509", "-newkey", "rsa:2048",
-                "-sha256", "-nodes", "-days", "1",
-                "-keyout", str(key), "-out", str(cert),
-                "-subj", "/CN=localhost",
-                "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
-                "-addext", "basicConstraints=critical,CA:TRUE",
-            ],
-            check=True,
-            capture_output=True,
-        )
-        key.chmod(0o600)
+        cert = Path(os.environ["DSE_M21_TLS_CERT"])
+        key = Path(os.environ["DSE_M21_TLS_KEY"])
+        self.assertTrue(cert.is_file() and key.is_file())
 
         backend = GVisorDockerBackend(
             runtime_image=os.environ.get(
