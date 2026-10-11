@@ -25,7 +25,7 @@ jobs:
     env:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/dse
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -48,7 +48,7 @@ jobs:
       DSE_GVISOR_PROBE_IMAGE: "python:3.12-slim"
       DSE_GVISOR_RUNTIME_IMAGE: "gcr.io/distroless/python3-debian13:nonroot"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
